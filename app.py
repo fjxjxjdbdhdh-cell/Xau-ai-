@@ -71,125 +71,7 @@ def get_xau_price():
         r = requests.get("https://api.metals.live/v1/spot/gold", timeout=10)
         return float(r.json()[0]["price"])
     except:
-        try:
-            r = requests.get("https://api.gold-api.com/price/XAU", timeout=10)
-            return float(r.json()["price"])
-        except:
-            return None
-
-def ema(values, period):
-    if len(values) < period: return sum(values) / len(values)
-    k = 2 / (period + 1)
-    ema_val = sum(values[:period]) / period
-    for v in values[period:]:
-        ema_val = v * k + ema_val * (1 - k)
-    return ema_val
-
-def rsi_calc(prices, period=14):
-    if len(prices) < period + 1: return 50
-    gains = 0
-    losses = 0
-    for i in range(1, period + 1):
-        diff = prices[i] - prices[i-1]
-        if diff > 0: gains += diff
-        else: losses -= diff
-    avg_gain = gains / period
-    avg_loss = losses / period
-    if avg_loss == 0: return 100
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-def atr_calc(highs, lows, closes, period=14):
-    if len(closes) < period + 1: return 1
-    trs = []
-    for i in range(1, len(closes)):
-        h = highs[i]
-        l = lows[i]
-        c_prev = closes[i-1]
-        tr = max(h - l, abs(h - c_prev), abs(l - c_prev))
-        trs.append(tr)
-    return sum(trs[-period:]) / period
-
-def mt5_open_trade(signal, price, sl, tp):
-    if not METAAPI_TOKEN:
-        return {"error": "MetaApi not configured"}
-    headers = {
-        "Authorization": f"Bearer {METAAPI_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    url = f"https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{METAAPI_ACCOUNT_ID}/trade"
-    data = {
-        "actionType": "ORDER_TYPE_BUY" if signal == "BUY" else "ORDER_TYPE_SELL",
-        "symbol": "XAUUSD",
-        "volume": 0.01,
-        "stopLoss": round(sl, 2),
-        "takeProfit": round(tp, 2)
-    }
-    try:
-        r = requests.post(url, json=data, headers=headers, timeout=15)
-        return r.json()
-    except Exception as e:
-        return {"error": str(e)}
-
-def auto_trader_loop():
-    price_history = []
-    high_history = []
-    low_history = []
-    
-    while True:
-        time.sleep(300)
-        try:
-            price = get_xau_price()
-            if not price: continue
-            
-            price_history.append(price)
-            high_history.append(price + 2)
-            low_history.append(price - 2)
-            
-            if len(price_history) > 100:
-                price_history = price_history[-100:]
-                high_history = high_history[-100:]
-                low_history = low_history[-100:]
-            
-            if len(price_history) < 30: continue
-            
-            e20 = ema(price_history, 20)
-            e50 = ema(price_history, 50)
-            rsi = rsi_calc(price_history)
-            atr = atr_calc(high_history, low_history, price_history)
-            
-            trend_up = e20 > e50
-            
-            signal = None
-            if trend_up and rsi > 52: signal = "BUY"
-            elif not trend_up and rsi < 48: signal = "SELL"
-            
-            if signal:
-                with _lock:
-                    weights = load_weights()
-                    rules = load_rules()
-                
-                conf = compute_confidence(signal, price, rsi, "UP" if signal == "BUY" else "DOWN", atr, weights)
-                conf, reasons, threshold = apply_rules(conf, signal, price, rsi, atr, rules)
-                
-                if conf >= threshold:
-                    sl = price - atr * 0.8 if signal == "BUY" else price + atr * 0.8
-                    tp = price + atr * 2.5 if signal == "BUY" else price - atr * 2.5
-                    
-                    result = mt5_open_trade(signal, price, round(sl, 2), round(tp, 2))
-                    
-                    msg = f"🤖 *AI открыл сделку!*\n"
-                    msg += f"Сигнал: *{signal} XAUUSD*\n"
-                    msg += f"Цена: {price} | RSI: {rsi} | ATR: {atr}\n"
-                    msg += f"Уверенность: {conf}\n"
-                    msg += f"SL: {sl:.2f} | TP: {tp:.2f}\n"
-                    msg += f"Ответ MT5: {json.dumps(result)}"
-                    
-                    send_telegram(msg)
-                    print(f"AUTO-TRADE: {signal} @ {price} | Result: {result}")
-                
-        except Exception as e:
-            print(f"Auto-trader error: {e}")
+        return None
 
 def normalize_signal(s):
     s = str(s).strip().upper()
@@ -424,9 +306,51 @@ def learn():
     insights = load_insights()
     return jsonify({"rules": rules, "insights_count": len(insights), "latest": insights[-1] if insights else None})
 
+@app.route("/telegram/message", methods=["POST"])
+def telegram_message():
+    data = request.get_json(silent=True) or {}
+    msg = data.get("message", {})
+    text = msg.get("text", "")
+    chat_id = msg.get("chat", {}).get("id")
+    
+    if not text or not chat_id:
+        return jsonify({"ok": True})
+    
+    parts = text.strip().split()
+    if len(parts) >= 5 and parts[0].upper() in ("BUY", "SELL"):
+        signal = parts[0].upper()
+        price = parts[1]
+        rsi_val = parts[2]
+        trend = parts[3]
+        atr_val = parts[4]
+        
+        with _lock:
+            weights = load_weights()
+            rules = load_rules()
+        
+        conf = compute_confidence(signal, price, rsi_val, trend, atr_val, weights)
+        conf, reasons, threshold = apply_rules(conf, signal, price, rsi_val, atr_val, rules)
+        decision = "EXECUTE" if conf >= threshold else "SKIP"
+        
+        reply = f"🤖 *AI Analysis*\nSignal: {signal}\nPrice: {price}\nRSI: {rsi_val} | Trend: {trend} | ATR: {atr_val}\nConfidence: {conf}\nDecision: {decision}\n"
+        if reasons:
+            reply += "Reasons:\n"
+            for r in reasons:
+                reply += f"- {r}\n"
+        
+        send_telegram(reply, chat_id=chat_id)
+    
+    return jsonify({"ok": True})
+
 @app.route("/telegram/webhook", methods=["POST"])
 def telegram_callback():
     update = request.get_json(silent=True) or {}
+    
+    # Check for text messages
+    if "message" in update and "text" in update.get("message", {}):
+        return telegram_message()
+    
+    # Check for callback queries (buttons)
     cb = update.get("callback_query", {})
     data_str = cb.get("data", "")
     
@@ -492,7 +416,6 @@ def daily_scheduler():
         time.sleep(60)
 
 threading.Thread(target=daily_scheduler, daemon=True).start()
-threading.Thread(target=auto_trader_loop, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
