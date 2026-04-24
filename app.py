@@ -401,8 +401,23 @@ def process_signal(signal, price, rsi, trend, atr, outcome=None):
     
     logger.info(f"Processed: {signal} @ {price} | Conf: {conf} | Dec: {decision} | Outcome: {outcome}")
     
-    msg = f"🤖 *AI Analysis*\nSignal: {signal} | Price: {price}\nRSI: {rsi} | Trend: {trend} | ATR: {atr}\nConfidence: {conf} | Decision: {'✅ EXECUTE' if decision == 'execute' else '⏸ SKIP'}\n"
-    if reasons: msg += "Reasons:\n" + "\n".join(f"  - {r}" for r in reasons)
+    # РАСЧЁТ SL/TP
+    price_val = float(price)
+    atr_val = float(atr)
+    sl_price = round(price_val - atr_val*0.8, 2) if signal == "BUY" else round(price_val + atr_val*0.8, 2)
+    tp_price = round(price_val + atr_val*2.5, 2) if signal == "BUY" else round(price_val - atr_val*2.5, 2)
+    sl_dollars = round(atr_val * 0.8 * 10, 0)
+    tp_dollars = round(atr_val * 2.5 * 10, 0)
+    
+    msg = f"🤖 *AI Analysis*\n"
+    msg += f"Signal: *{signal}* | Price: {price}\n"
+    msg += f"RSI: {rsi} | Trend: {trend} | ATR: {atr}\n"
+    msg += f"Confidence: *{conf}* | Decision: {'✅ EXECUTE' if decision == 'execute' else '⏸ SKIP'}\n"
+    msg += f"━━━━━━━━━━━━━━\n"
+    msg += f"🛑 Stop Loss: ${sl_dollars} (цена: {sl_price})\n"
+    msg += f"🎯 Take Profit: ${tp_dollars} (цена: {tp_price})\n"
+    msg += f"📊 Risk/Reward: 1:{round(tp_dollars/sl_dollars, 1)}\n"
+    if reasons: msg += "\n" + "\n".join(f"  - {r}" for r in reasons)
     
     kb = {"inline_keyboard": [[
         {"text": "✅ Win", "callback_data": f"win:{trade['id']}"},
