@@ -18,6 +18,8 @@ TELEGRAM_CONFIG = os.path.join(BASE_DIR, "telegram.json")
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 DEFAULT_CHAT_ID = os.environ.get("CHAT_ID", "5246379098")
+METAAPI_TOKEN = "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJlZjk5Yzk1YmY0NDRmODNjMzAzODdjMWJlOWFjNGNiZCIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVzdC1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcnBjLWFwaSIsIm1ldGhvZHMiOlsibWV0YWFwaS1hcGk6d3M6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVhbC10aW1lLXN0cmVhbWluZy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJtZXRhc3RhdHMtYXBpIiwibWV0aG9kcyI6WyJtZXRhc3RhdHMtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6InJpc2stbWFuYWdlbWVudC1hcGkiLCJtZXRob2RzIjpbInJpc2stbWFuYWdlbWVudC1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoiY29weWZhY3RvcnktYXBpIiwibWV0aG9kcyI6WyJjb3B5ZmFjdG9yeS1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoibXQtbWFuYWdlci1hcGkiLCJtZXRob2RzIjpbIm10LW1hbmFnZXItYXBpOnJlc3Q6ZGVhbGluZzoqOioiLCJtdC1tYW5hZ2VyLWFwaTpyZXN0OnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJiaWxsaW5nLWFwaSIsIm1ldGhvZHMiOlsiYmlsbGluZy1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfV0sImlnbm9yZVJhdGVMaW1pdHMiOmZhbHNlLCJ0b2tlbklkIjoiMjAyMTAyMTMiLCJpbXBlcnNvbmF0ZWQiOmZhbHNlLCJyZWFsVXNlcklkIjoiZWY5OWM5NWJmNDQ0ZjgzYzMwMzg3YzFiZTlhYzRjYmQiLCJpYXQiOjE3NzY5OTk3MzYsImV4cCI6MTc4NDc3NTczNn0.fhpR_e2x_5xwW3QbppHrwtZjv0TY5-ObgPJMFkKw_vDCldt3zj8wQGHevYYgp0wLrMFZvgWYVeC2SU-35RdECWacI3_BSOYo-I6nePtZ4bEalLFSPd2anPuMlQ7W7lQKry--DpWT4UwSx3oReWdOz6geVDpcV2zqNFQD79dPdcZT90NvZ6PQQSahBD5gC89_bvo6w2YRmAplNCOsdcMq5kg2egSxZm6lKRflpo9HzTz1Tdb3at16Q0Gryay7LLBlravVfZGFOgguc3nEMYfthkYZTyt-2oJNnmQ--KqP44RTOWP-zExHRyjk5dNBbTNSRpK5Cvvtl5DspP5nZy6Gf0vJQcRf4Fit6G_xW1BB5-tqTbWfbrgdtwc-mgG-0462QuzaNk9rvTg8CWdDjfP-hddg7elGgp_KmZCTzozXi9HLnK6ojYa7hZ9H2O97pmmy_s1MMnhmpmvmWUe-_i_jbKHgnYLDVSczSIgqP46muc7JcBcojYXNogZywBHCIOgn-xRSTVh24jZeKlsNdcxqRUZj8TY9DlCIpb3pmBOVHpzdwXGFfqzrMewiEU0pCywTuBbYl1O7cZkYr6uNWYHJx2fKGFNdyQTcbyoDAkjeZNxDetKjAvF1-5yWsBFuoatzFYXuveqbdZgCA5820LLjDorAx7Uub9mIXuHcdOYEprI"
+METAAPI_ACCOUNT_ID = "abd0c175-fc27-4fba-a708-485d2c1f1279"
 
 GA_INTERVAL = 10
 
@@ -63,6 +65,131 @@ def send_telegram(text, chat_id=None, reply_markup=None):
         r = requests.post(url, json=payload, timeout=15)
         return {"ok": True, "response": r.json()}
     except Exception as e: return {"ok": False, "error": str(e)}
+
+def get_xau_price():
+    try:
+        r = requests.get("https://api.metals.live/v1/spot/gold", timeout=10)
+        return float(r.json()[0]["price"])
+    except:
+        try:
+            r = requests.get("https://api.gold-api.com/price/XAU", timeout=10)
+            return float(r.json()["price"])
+        except:
+            return None
+
+def ema(values, period):
+    if len(values) < period: return sum(values) / len(values)
+    k = 2 / (period + 1)
+    ema_val = sum(values[:period]) / period
+    for v in values[period:]:
+        ema_val = v * k + ema_val * (1 - k)
+    return ema_val
+
+def rsi_calc(prices, period=14):
+    if len(prices) < period + 1: return 50
+    gains = 0
+    losses = 0
+    for i in range(1, period + 1):
+        diff = prices[i] - prices[i-1]
+        if diff > 0: gains += diff
+        else: losses -= diff
+    avg_gain = gains / period
+    avg_loss = losses / period
+    if avg_loss == 0: return 100
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+def atr_calc(highs, lows, closes, period=14):
+    if len(closes) < period + 1: return 1
+    trs = []
+    for i in range(1, len(closes)):
+        h = highs[i]
+        l = lows[i]
+        c_prev = closes[i-1]
+        tr = max(h - l, abs(h - c_prev), abs(l - c_prev))
+        trs.append(tr)
+    return sum(trs[-period:]) / period
+
+def mt5_open_trade(signal, price, sl, tp):
+    if not METAAPI_TOKEN:
+        return {"error": "MetaApi not configured"}
+    headers = {
+        "Authorization": f"Bearer {METAAPI_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    url = f"https://mt-client-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/{METAAPI_ACCOUNT_ID}/trade"
+    data = {
+        "actionType": "ORDER_TYPE_BUY" if signal == "BUY" else "ORDER_TYPE_SELL",
+        "symbol": "XAUUSD",
+        "volume": 0.01,
+        "stopLoss": round(sl, 2),
+        "takeProfit": round(tp, 2)
+    }
+    try:
+        r = requests.post(url, json=data, headers=headers, timeout=15)
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+def auto_trader_loop():
+    price_history = []
+    high_history = []
+    low_history = []
+    
+    while True:
+        time.sleep(300)
+        try:
+            price = get_xau_price()
+            if not price: continue
+            
+            price_history.append(price)
+            high_history.append(price + 2)
+            low_history.append(price - 2)
+            
+            if len(price_history) > 100:
+                price_history = price_history[-100:]
+                high_history = high_history[-100:]
+                low_history = low_history[-100:]
+            
+            if len(price_history) < 30: continue
+            
+            e20 = ema(price_history, 20)
+            e50 = ema(price_history, 50)
+            rsi = rsi_calc(price_history)
+            atr = atr_calc(high_history, low_history, price_history)
+            
+            trend_up = e20 > e50
+            
+            signal = None
+            if trend_up and rsi > 52: signal = "BUY"
+            elif not trend_up and rsi < 48: signal = "SELL"
+            
+            if signal:
+                with _lock:
+                    weights = load_weights()
+                    rules = load_rules()
+                
+                conf = compute_confidence(signal, price, rsi, "UP" if signal == "BUY" else "DOWN", atr, weights)
+                conf, reasons, threshold = apply_rules(conf, signal, price, rsi, atr, rules)
+                
+                if conf >= threshold:
+                    sl = price - atr * 0.8 if signal == "BUY" else price + atr * 0.8
+                    tp = price + atr * 2.5 if signal == "BUY" else price - atr * 2.5
+                    
+                    result = mt5_open_trade(signal, price, round(sl, 2), round(tp, 2))
+                    
+                    msg = f"🤖 *AI открыл сделку!*\n"
+                    msg += f"Сигнал: *{signal} XAUUSD*\n"
+                    msg += f"Цена: {price} | RSI: {rsi} | ATR: {atr}\n"
+                    msg += f"Уверенность: {conf}\n"
+                    msg += f"SL: {sl:.2f} | TP: {tp:.2f}\n"
+                    msg += f"Ответ MT5: {json.dumps(result)}"
+                    
+                    send_telegram(msg)
+                    print(f"AUTO-TRADE: {signal} @ {price} | Result: {result}")
+                
+        except Exception as e:
+            print(f"Auto-trader error: {e}")
 
 def normalize_signal(s):
     s = str(s).strip().upper()
@@ -181,7 +308,6 @@ def search_internet():
     total_bull = sum(r["analysis"]["bullish_hits"] for r in new_records if "analysis" in r)
     total_bear = sum(r["analysis"]["bearish_hits"] for r in new_records if "analysis" in r)
     total_risk = sum(r["analysis"]["risk_hits"] for r in new_records if "analysis" in r)
-    total_rsi = sum(r["analysis"]["rsi_mentions"] for r in new_records if "analysis" in r)
     
     if total_bull > total_bear:
         rules["preferred_signal"] = "BUY"
@@ -192,11 +318,6 @@ def search_internet():
     
     rules["bias_strength"] = min(1.0, (total_bull + total_bear) / max(total_bull + total_bear + total_risk, 1))
     rules["risk_mode"] = "elevated" if total_risk > total_bull + total_bear else "normal"
-    
-    if total_rsi > 3:
-        rules["rsi_oversold"] = 30
-        rules["rsi_overbought"] = 70
-    
     rules["narrative"] = f"Search: {len(new_records)} queries. Bull={total_bull} Bear={total_bear} Risk={total_risk}. Mode: {rules['risk_mode']}"
     save_rules(rules)
     
@@ -371,6 +492,7 @@ def daily_scheduler():
         time.sleep(60)
 
 threading.Thread(target=daily_scheduler, daemon=True).start()
+threading.Thread(target=auto_trader_loop, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
