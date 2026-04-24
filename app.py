@@ -18,8 +18,6 @@ TELEGRAM_CONFIG = os.path.join(BASE_DIR, "telegram.json")
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 DEFAULT_CHAT_ID = os.environ.get("CHAT_ID", "5246379098")
-METAAPI_TOKEN = "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJlZjk5Yzk1YmY0NDRmODNjMzAzODdjMWJlOWFjNGNiZCIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVzdC1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcnBjLWFwaSIsIm1ldGhvZHMiOlsibWV0YWFwaS1hcGk6d3M6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVhbC10aW1lLXN0cmVhbWluZy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJtZXRhc3RhdHMtYXBpIiwibWV0aG9kcyI6WyJtZXRhc3RhdHMtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6InJpc2stbWFuYWdlbWVudC1hcGkiLCJtZXRob2RzIjpbInJpc2stbWFuYWdlbWVudC1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoiY29weWZhY3RvcnktYXBpIiwibWV0aG9kcyI6WyJjb3B5ZmFjdG9yeS1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoibXQtbWFuYWdlci1hcGkiLCJtZXRob2RzIjpbIm10LW1hbmFnZXItYXBpOnJlc3Q6ZGVhbGluZzoqOioiLCJtdC1tYW5hZ2VyLWFwaTpyZXN0OnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJiaWxsaW5nLWFwaSIsIm1ldGhvZHMiOlsiYmlsbGluZy1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfV0sImlnbm9yZVJhdGVMaW1pdHMiOmZhbHNlLCJ0b2tlbklkIjoiMjAyMTAyMTMiLCJpbXBlcnNvbmF0ZWQiOmZhbHNlLCJyZWFsVXNlcklkIjoiZWY5OWM5NWJmNDQ0ZjgzYzMwMzg3YzFiZTlhYzRjYmQiLCJpYXQiOjE3NzY5OTk3MzYsImV4cCI6MTc4NDc3NTczNn0.fhpR_e2x_5xwW3QbppHrwtZjv0TY5-ObgPJMFkKw_vDCldt3zj8wQGHevYYgp0wLrMFZvgWYVeC2SU-35RdECWacI3_BSOYo-I6nePtZ4bEalLFSPd2anPuMlQ7W7lQKry--DpWT4UwSx3oReWdOz6geVDpcV2zqNFQD79dPdcZT90NvZ6PQQSahBD5gC89_bvo6w2YRmAplNCOsdcMq5kg2egSxZm6lKRflpo9HzTz1Tdb3at16Q0Gryay7LLBlravVfZGFOgguc3nEMYfthkYZTyt-2oJNnmQ--KqP44RTOWP-zExHRyjk5dNBbTNSRpK5Cvvtl5DspP5nZy6Gf0vJQcRf4Fit6G_xW1BB5-tqTbWfbrgdtwc-mgG-0462QuzaNk9rvTg8CWdDjfP-hddg7elGgp_KmZCTzozXi9HLnK6ojYa7hZ9H2O97pmmy_s1MMnhmpmvmWUe-_i_jbKHgnYLDVSczSIgqP46muc7JcBcojYXNogZywBHCIOgn-xRSTVh24jZeKlsNdcxqRUZj8TY9DlCIpb3pmBOVHpzdwXGFfqzrMewiEU0pCywTuBbYl1O7cZkYr6uNWYHJx2fKGFNdyQTcbyoDAkjeZNxDetKjAvF1-5yWsBFuoatzFYXuveqbdZgCA5820LLjDorAx7Uub9mIXuHcdOYEprI"
-METAAPI_ACCOUNT_ID = "abd0c175-fc27-4fba-a708-485d2c1f1279"
 
 GA_INTERVAL = 10
 
@@ -65,13 +63,6 @@ def send_telegram(text, chat_id=None, reply_markup=None):
         r = requests.post(url, json=payload, timeout=15)
         return {"ok": True, "response": r.json()}
     except Exception as e: return {"ok": False, "error": str(e)}
-
-def get_xau_price():
-    try:
-        r = requests.get("https://api.metals.live/v1/spot/gold", timeout=10)
-        return float(r.json()[0]["price"])
-    except:
-        return None
 
 def normalize_signal(s):
     s = str(s).strip().upper()
@@ -306,68 +297,58 @@ def learn():
     insights = load_insights()
     return jsonify({"rules": rules, "insights_count": len(insights), "latest": insights[-1] if insights else None})
 
-@app.route("/telegram/message", methods=["POST"])
-def telegram_message():
+@app.route("/telegram/webhook", methods=["POST"])
+def telegram_webhook():
     data = request.get_json(silent=True) or {}
+    
     msg = data.get("message", {})
     text = msg.get("text", "")
     chat_id = msg.get("chat", {}).get("id")
     
-    if not text or not chat_id:
+    if text and chat_id:
+        parts = text.strip().split()
+        if len(parts) >= 5 and parts[0].upper() in ("BUY", "SELL"):
+            signal = parts[0].upper()
+            price = parts[1]
+            rsi_val = parts[2]
+            trend = parts[3]
+            atr_val = parts[4]
+            
+            with _lock:
+                weights = load_weights()
+                rules = load_rules()
+            
+            conf = compute_confidence(signal, price, rsi_val, trend, atr_val, weights)
+            conf, reasons, threshold = apply_rules(conf, signal, price, rsi_val, atr_val, rules)
+            decision = "EXECUTE" if conf >= threshold else "SKIP"
+            
+            reply = f"🤖 *AI Analysis*\nSignal: *{signal}*\nPrice: {price} | RSI: {rsi_val}\nTrend: {trend} | ATR: {atr_val}\nConfidence: *{conf}*\nDecision: *{decision}*\n"
+            if reasons:
+                reply += "Reasons:\n"
+                for r in reasons:
+                    reply += f"  - {r}\n"
+            
+            send_telegram(reply, chat_id=chat_id)
+        else:
+            send_telegram("Отправь: BUY цена RSI тренд ATR\nПример: BUY 4700 54 UP 10", chat_id=chat_id)
         return jsonify({"ok": True})
     
-    parts = text.strip().split()
-    if len(parts) >= 5 and parts[0].upper() in ("BUY", "SELL"):
-        signal = parts[0].upper()
-        price = parts[1]
-        rsi_val = parts[2]
-        trend = parts[3]
-        atr_val = parts[4]
-        
-        with _lock:
-            weights = load_weights()
-            rules = load_rules()
-        
-        conf = compute_confidence(signal, price, rsi_val, trend, atr_val, weights)
-        conf, reasons, threshold = apply_rules(conf, signal, price, rsi_val, atr_val, rules)
-        decision = "EXECUTE" if conf >= threshold else "SKIP"
-        
-        reply = f"🤖 *AI Analysis*\nSignal: {signal}\nPrice: {price}\nRSI: {rsi_val} | Trend: {trend} | ATR: {atr_val}\nConfidence: {conf}\nDecision: {decision}\n"
-        if reasons:
-            reply += "Reasons:\n"
-            for r in reasons:
-                reply += f"- {r}\n"
-        
-        send_telegram(reply, chat_id=chat_id)
-    
-    return jsonify({"ok": True})
-
-@app.route("/telegram/webhook", methods=["POST"])
-def telegram_callback():
-    update = request.get_json(silent=True) or {}
-    
-    # Check for text messages
-    if "message" in update and "text" in update.get("message", {}):
-        return telegram_message()
-    
-    # Check for callback queries (buttons)
-    cb = update.get("callback_query", {})
+    cb = data.get("callback_query", {})
     data_str = cb.get("data", "")
     
-    if ":" not in data_str: return jsonify({"ok": True})
-    action, trade_id = data_str.split(":", 1)
-    if action not in ("win", "loss"): return jsonify({"ok": True})
+    if ":" in data_str:
+        action, trade_id = data_str.split(":", 1)
+        if action in ("win", "loss"):
+            with _lock:
+                trades = load_trades()
+                for t in trades:
+                    if t.get("id") == trade_id:
+                        t["outcome"] = action
+                        break
+                save_trades(trades)
+                genetic_evolve(load_weights(), trades)
     
-    with _lock:
-        trades = load_trades()
-        for t in trades:
-            if t.get("id") == trade_id:
-                t["outcome"] = action
-                break
-        save_trades(trades)
-        genetic_evolve(load_weights(), trades)
-    
-    return jsonify({"ok": True, "outcome": action})
+    return jsonify({"ok": True})
 
 @app.route("/report", methods=["POST", "GET"])
 def report():
@@ -410,9 +391,9 @@ def daily_scheduler():
                 "winrate": round(wins / max(len(labeled), 1), 2),
                 "avg_conf": round(sum(t.get("confidence", 0) for t in trades) / max(len(trades), 1), 2)
             }
-            msg = format_daily_report(stats, load_rules(), "Daily internet search completed")
+            msg = format_daily_report(stats, load_rules(), "Daily search done")
             send_telegram(msg)
-        except Exception as e: print(f"Report error: {e}")
+        except Exception as e: print(f"Error: {e}")
         time.sleep(60)
 
 threading.Thread(target=daily_scheduler, daemon=True).start()
