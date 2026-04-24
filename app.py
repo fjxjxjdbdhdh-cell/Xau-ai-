@@ -403,23 +403,25 @@ def tg_webhook():
         if text == "/learn":
             ins = li(); r = lr()
             tg(f"🧠 Insights: {len(ins)} records\n{r.get('narrative')}", chat)
-            return jsonify({"ok": True})
-        
-        parts = text.split()
+            return jsonify({"ok": 
+
+             parts = text.split()
         if len(parts) >= 5 and parts[0] in ("/buy", "/sell"):
-            signal = "BUY" if parts[0] == "/buy" else "SELL"
-            price = parts[1]
-            rsi_val = parts[2]
-            trend = parts[3]
-            atr_val = parts[4]
-            sl_val = parts[5] if len(parts) >= 6 else None
-            tp_val = parts[6] if len(parts) >= 7 else None
-            process_signal(signal, price, rsi_val, trend, atr_val, sl_val, tp_val)
-            return jsonify({"ok": True})
-        
-        tg("Команды: /buy /sell /status /report\nSL/TP в $: /buy 4695 54 UP 10 8$ 25$\nSL/TP в цене: /buy 4695 54 UP 10 4687 4720", chat)
-        return jsonify({"ok": True})
-    
+            try:
+                signal = "BUY" if parts[0] == "/buy" else "SELL"
+                price = parts[1]
+                rsi_val = parts[2]
+                trend = parts[3]
+                atr_val = parts[4]
+                sl_val = parts[5] if len(parts) >= 6 else None
+                tp_val = parts[6] if len(parts) >= 7 else None
+                float(price)
+                float(rsi_val)
+                float(atr_val)
+                process_signal(signal, price, rsi_val, trend, atr_val, sl_val, tp_val)
+            except ValueError:
+                tg("❌ Используй цифры!\nПример: /buy 4695 54 UP 10 8$ 25$", chat)
+            return jsonify({"ok": True})               
     cb = d.get("callback_query", {})
     ds = cb.get("data", "")
     if ":" in ds:
