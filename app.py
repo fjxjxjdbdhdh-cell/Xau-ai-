@@ -9,7 +9,6 @@ import time
 import logging
 from datetime import datetime, timedelta
 
-# ========== НАСТРОЙКИ ==========
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TRADES_FILE = os.path.join(BASE_DIR, "trades.json")
 WEIGHTS_FILE = os.path.join(BASE_DIR, "weights.json")
@@ -33,7 +32,6 @@ GA_MUTATION_RATE = 0.15
 DEFAULT_WEIGHTS = {"signal": 0.30, "price": 0.10, "rsi": 0.25, "trend": 0.25, "atr": 0.10}
 DEFAULT_RULES = {"preferred_signal": "BUY", "market_bias": "bullish", "bias_strength": 0.5, "rsi_oversold": 30, "rsi_overbought": 70, "atr_caution_above": 50, "risk_mode": "normal", "confidence_threshold": 0.70, "price_target": 4700, "narrative": "AI initialized."}
 
-# ========== ЛОГГЕР ==========
 logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[logging.FileHandler(LOG_FILE), logging.StreamHandler()])
 logger = logging.getLogger("XAU_AI")
@@ -41,7 +39,6 @@ logger = logging.getLogger("XAU_AI")
 app = Flask(__name__)
 _lock = threading.Lock()
 
-# ========== JSON ==========
 def rj(p, d):
     if not os.path.exists(p): return d
     try:
@@ -65,7 +62,6 @@ sc = lambda c: wj(TELEGRAM_CFG, c)
 lo = lambda: rj(OANDA_STATE, {"prices": [], "trades": []})
 so = lambda s: wj(OANDA_STATE, s)
 
-# ========== TELEGRAM ==========
 def tg(text, chat=None, kb=None):
     try:
         p = {"chat_id": chat or CHAT_ID, "text": text, "parse_mode": "Markdown", "disable_web_page_preview": True}
@@ -84,7 +80,6 @@ def tg_answer(cb_id, text=None):
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/answerCallbackQuery", json=p, timeout=10)
     except: pass
 
-# ========== OANDA ==========
 def oanda_headers():
     return {"Authorization": f"Bearer {OANDA_KEY}", "Content-Type": "application/json"}
 
@@ -112,7 +107,6 @@ def open_order(signal, price, atr):
         logger.error(f"Order error: {e}")
         return {"ok": False, "error": str(e)}
 
-# ========== ИНДИКАТОРЫ ==========
 def sma(p, n):
     return sum(p[-n:]) / n if len(p) >= n else 0
 
@@ -139,7 +133,6 @@ def atr_calc(p):
     if len(p) < 15: return 1
     return round(sum(abs(p[i]-p[i-1]) for i in range(-14, 0)) / 14, 2)
 
-# ========== AI ==========
 def normalize_signal(s):
     return {"BUY": 1.0, "SELL": 0.0}.get(str(s).strip().upper(), 0.5)
 
@@ -201,7 +194,6 @@ def apply_rules(conf, signal, rsi, atr, rules):
     
     return round(max(0, min(1, conf)), 4), reasons, round(thr, 4)
 
-# ========== ГЕНЕТИЧЕСКИЙ АЛГОРИТМ (СЛОЖНЫЙ) ==========
 def fitness(weights, trades):
     scored = correct = 0
     for t in trades:
@@ -255,7 +247,6 @@ def evolve_weights(current, trades):
     logger.info(f"GA complete. Best fitness: {best_fit:.4f}. Weights: {best}")
     return best, best_fit
 
-# ========== ИНСАЙТЫ (ГЛУБОКИЕ) ==========
 def search_and_learn():
     insights = li()
     queries = [
@@ -283,21 +274,19 @@ def search_and_learn():
                     "risk_words": text.lower().count("risk") + text.lower().count("crash") + text.lower().count("drop") + text.lower().count("volatile"),
                     "rsi_mentions": text.lower().count("rsi"),
                     "ema_mentions": text.lower().count("ema") + text.lower().count("moving average"),
-                    "price_mentions": sum(1 for w in text.split() if w.startswith("$") or w.startswith("4")),
-                    "keywords": [w for w in ["breakout", "support", "resistance", "trend", "reversal", "consolidation"] if w in text.lower()],
+                    "keywords": [w for w in ["breakout", "support", "resistance", "trend", "reversal"] if w in text.lower()],
                     "sample": text[:500]
                 }
             }
             insights.append(record)
             new_records.append(record)
-            logger.info(f"Insight gathered: {query} | Bull:{record['analysis']['bullish']} Bear:{record['analysis']['bearish']}")
+            logger.info(f"Insight: {query} | Bull:{record['analysis']['bullish']} Bear:{record['analysis']['bearish']}")
         except Exception as e:
-            logger.warning(f"Insight failed for '{query}': {e}")
+            logger.warning(f"Insight failed: {e}")
     
     if len(insights) > 200: insights = insights[-200:]
     si(insights)
     
-    # Анализ и обновление правил
     rules = lr()
     total_bull = sum(r["analysis"]["bullish"] for r in new_records if "analysis" in r)
     total_bear = sum(r["analysis"]["bearish"] for r in new_records if "analysis" in r)
@@ -308,17 +297,11 @@ def search_and_learn():
     rules["preferred_signal"] = "BUY" if total_bull > total_bear else "SELL"
     rules["bias_strength"] = min(1, (total_bull + total_bear) / max(total_bull + total_bear + total_risk, 1))
     rules["risk_mode"] = "elevated" if total_risk > (total_bull + total_bear) * 0.5 else "normal"
-    
-    if "reversal" in all_keywords: rules["confidence_threshold"] = min(0.85, rules.get("confidence_threshold", 0.7) + 0.05)
-    if "breakout" in all_keywords: rules["confidence_threshold"] = max(0.6, rules.get("confidence_threshold", 0.7) - 0.03)
-    
-    rules["narrative"] = f"Search: {len(new_records)} queries | Bull:{total_bull} Bear:{total_bear} Risk:{total_risk} | Keywords: {', '.join(set(all_keywords)[:5])}"
+    rules["narrative"] = f"Search: {len(new_records)} queries | Bull:{total_bull} Bear:{total_bear} | Keywords: {', '.join(set(all_keywords)[:5])}"
     sr(rules)
-    
     logger.info(f"Rules updated: {rules['narrative']}")
     return rules
 
-# ========== АВТОТРЕЙДЕР ==========
 def auto_loop():
     prices = []
     logger.info("Auto-trader started")
@@ -334,7 +317,7 @@ def auto_loop():
             so({"prices": prices})
             
             if len(prices) < 50:
-                logger.info(f"Buffer filling: {len(prices)}/50 prices")
+                logger.info(f"Buffer: {len(prices)}/50")
                 continue
             
             e20 = ema_calc(prices, 20)
@@ -353,8 +336,6 @@ def auto_loop():
                 conf = compute_confidence(signal, r, trend, a, w)
                 conf, reasons, thr = apply_rules(conf, signal, r, a, rules)
                 
-                logger.info(f"Signal: {signal} | Price: {price} | RSI: {r} | ATR: {a} | Conf: {conf} | Thr: {thr} | {'EXECUTE' if conf >= thr else 'SKIP'}")
-                
                 if conf >= thr:
                     order = open_order(signal, price, a)
                     if order.get("ok"):
@@ -368,28 +349,43 @@ def auto_loop():
                         }
                         t = lt(); t.append(trade); st(t)
                         
-                        msg = f"🤖 *AUTO-TRADE*\n{signal} XAUUSD @ {price}\nRSI: {r} | ATR: {a}\nConfidence: {conf}\nSL: {order['sl']} | TP: {order['tp']}\n"
-                        if reasons: msg += "Reasons:\n" + "\n".join(f"  - {r}" for r in reasons)
+                        msg = f"🤖 *AUTO-TRADE*\n{signal} XAUUSD @ {price}\nRSI: {r} | ATR: {a}\nConfidence: {conf}\nSL: {order['sl']} | TP: {order['tp']}"
                         tg(msg)
-                        
                         evolve_weights(w, t)
         except Exception as e:
             logger.error(f"Auto-trader error: {e}")
 
-# ========== PROCESS SIGNAL ==========
-def process_signal(signal, price, rsi, trend, atr, outcome=None):
+# ========== PROCESS SIGNAL (С РУЧНЫМ SL/TP) ==========
+def process_signal(signal, price, rsi, trend, atr, sl_price=None, tp_price=None, outcome=None):
     with _lock: w = lw(); rules = lr()
     
     conf = compute_confidence(signal, float(rsi), trend, float(atr), w)
     conf, reasons, thr = apply_rules(conf, signal, float(rsi), float(atr), rules)
     decision = "execute" if conf >= thr else "skip"
     
+    price_val = float(price)
+    atr_val = float(atr)
+    
+    # Ручной или авто SL/TP
+    if sl_price is None:
+        sl_price = round(price_val - atr_val*0.8, 2) if signal == "BUY" else round(price_val + atr_val*0.8, 2)
+    else:
+        sl_price = round(float(sl_price), 2)
+    
+    if tp_price is None:
+        tp_price = round(price_val + atr_val*2.5, 2) if signal == "BUY" else round(price_val - atr_val*2.5, 2)
+    else:
+        tp_price = round(float(tp_price), 2)
+    
+    sl_dollars = round(abs(price_val - sl_price) * 10, 0)
+    tp_dollars = round(abs(tp_price - price_val) * 10, 0)
+    
     trade = {
         "id": uuid.uuid4().hex[:10],
         "time": datetime.utcnow().isoformat(),
         "signal": signal, "price": price, "rsi": rsi, "trend": trend, "atr": atr,
         "confidence": conf, "decision": decision, "reasons": reasons,
-        "outcome": outcome, "source": "manual"
+        "sl": sl_price, "tp": tp_price, "outcome": outcome, "source": "manual"
     }
     
     t = lt(); t.append(trade); st(t)
@@ -399,15 +395,7 @@ def process_signal(signal, price, rsi, trend, atr, outcome=None):
         new_w, fit = evolve_weights(w, t)
         if new_w != w: ga = {"evolved": True, "fitness": fit}
     
-    logger.info(f"Processed: {signal} @ {price} | Conf: {conf} | Dec: {decision} | Outcome: {outcome}")
-    
-    # РАСЧЁТ SL/TP
-    price_val = float(price)
-    atr_val = float(atr)
-    sl_price = round(price_val - atr_val*0.8, 2) if signal == "BUY" else round(price_val + atr_val*0.8, 2)
-    tp_price = round(price_val + atr_val*2.5, 2) if signal == "BUY" else round(price_val - atr_val*2.5, 2)
-    sl_dollars = round(atr_val * 0.8 * 10, 0)
-    tp_dollars = round(atr_val * 2.5 * 10, 0)
+    logger.info(f"Processed: {signal} @ {price} | Conf: {conf} | Dec: {decision} | SL:{sl_price} TP:{tp_price}")
     
     msg = f"🤖 *AI Analysis*\n"
     msg += f"Signal: *{signal}* | Price: {price}\n"
@@ -416,7 +404,7 @@ def process_signal(signal, price, rsi, trend, atr, outcome=None):
     msg += f"━━━━━━━━━━━━━━\n"
     msg += f"🛑 Stop Loss: ${sl_dollars} (цена: {sl_price})\n"
     msg += f"🎯 Take Profit: ${tp_dollars} (цена: {tp_price})\n"
-    msg += f"📊 Risk/Reward: 1:{round(tp_dollars/sl_dollars, 1)}\n"
+    msg += f"📊 Risk/Reward: 1:{round(tp_dollars/max(sl_dollars,1), 1)}\n"
     if reasons: msg += "\n" + "\n".join(f"  - {r}" for r in reasons)
     
     kb = {"inline_keyboard": [[
@@ -431,26 +419,26 @@ def process_signal(signal, price, rsi, trend, atr, outcome=None):
 @app.route("/")
 def home():
     t = lt(); r = lr()
-    return f"<h1>🤖 XAU AI Trader</h1><p>Trades: {len(t)} | Bias: {r.get('market_bias')}</p><p><a href='/stats'>Stats</a> | <a href='/evolve'>Evolve</a> | <a href='/learn'>Learn</a></p>"
+    return f"<h1>🤖 XAU AI Trader</h1><p>Trades: {len(t)} | Bias: {r.get('market_bias')}</p>"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     d = request.get_json(silent=True) or {}
     if any(d.get(k) is None for k in ["signal","price","rsi","trend","atr"]):
         return jsonify({"error": "Missing fields"}), 400
-    trade, ga = process_signal(d["signal"], d["price"], d["rsi"], d["trend"], d["atr"], d.get("outcome"))
-    return jsonify({"status": "ok", "decision": trade["decision"], "confidence": trade["confidence"]})
+    trade, ga = process_signal(d["signal"], d["price"], d["rsi"], d["trend"], d["atr"])
+    return jsonify({"status": "ok", "decision": trade["decision"]})
 
 @app.route("/stats")
 def stats():
     t = lt(); lab = [x for x in t if x.get("outcome") in ("win","loss")]
     wins = sum(1 for x in lab if x["outcome"] == "win")
-    return jsonify({"total": len(t), "labeled": len(lab), "wins": wins, "winrate": round(wins/max(len(lab),1),2), "weights": lw()})
+    return jsonify({"total": len(t), "wins": wins, "winrate": round(wins/max(len(lab),1),2), "weights": lw()})
 
 @app.route("/evolve")
 def ev():
     r = search_and_learn()
-    return jsonify({"ok": True, "bias": r.get("market_bias"), "rules": r})
+    return jsonify({"ok": True, "bias": r.get("market_bias")})
 
 @app.route("/learn")
 def learn():
@@ -467,32 +455,37 @@ def tg_webhook():
     
     if text and chat:
         if text == "/start":
-            tg("🤖 *XAU AI Trader*\n\n/buy ЦЕНА RSI ТРЕНД ATR\n/sell ЦЕНА RSI ТРЕНД ATR\n/status\n/report\n/learn", chat)
+            tg("🤖 *XAU AI Trader*\n\n/buy ЦЕНА RSI ТРЕНД ATR [SL] [TP]\n/sell ЦЕНА RSI ТРЕНД ATR [SL] [TP]\n/status\n/report\n/learn\n\nПример с авто SL/TP: /buy 4695 54 UP 10\nПример с ручным SL/TP: /buy 4695 54 UP 10 4687 4720", chat)
             return jsonify({"ok": True})
         if text == "/status":
             t = lt(); r = lr(); lab = [x for x in t if x.get("outcome") in ("win","loss")]
             wins = sum(1 for x in lab if x["outcome"] == "win")
-            wr = round(wins/max(len(lab),1),2) if lab else 0
-            tg(f"📊 *Status*\nTrades: {len(t)} | Wins: {wins} | Winrate: {wr}\nBias: {r.get('market_bias')}\nSignal: {r.get('preferred_signal')}\nRisk: {r.get('risk_mode')}", chat)
+            tg(f"📊 Trades: {len(t)} | Wins: {wins} | Bias: {r.get('market_bias')}", chat)
             return jsonify({"ok": True})
         if text == "/report":
             r = search_and_learn()
             t = lt(); lab = [x for x in t if x.get("outcome") in ("win","loss")]
             wins = sum(1 for x in lab if x["outcome"] == "win")
-            tg(f"📊 *DAILY REPORT*\nTrades: {len(t)} | Wins: {wins}\nBias: {r.get('market_bias')}\nSignal: {r.get('preferred_signal')}\nRisk: {r.get('risk_mode')}\n{r.get('narrative')}", chat)
+            tg(f"📊 *REPORT*\nTrades: {len(t)} | Wins: {wins}\n{r.get('narrative')}", chat)
             return jsonify({"ok": True})
         if text == "/learn":
-            ins = li()
-            r = lr()
-            latest = ins[-1] if ins else None
-            tg(f"🧠 *Learned*\nRules: {json.dumps(r, indent=2)[:500]}\nInsights: {len(ins)} records\nLatest: {str(latest)[:300]}", chat)
+            ins = li(); r = lr()
+            tg(f"🧠 Insights: {len(ins)} records\n{r.get('narrative')}", chat)
             return jsonify({"ok": True})
+        
         parts = text.split()
         if len(parts) >= 5 and parts[0] in ("/buy", "/sell"):
             signal = "BUY" if parts[0] == "/buy" else "SELL"
-            process_signal(signal, parts[1], parts[2], parts[3], parts[4])
+            price = parts[1]
+            rsi_val = parts[2]
+            trend = parts[3]
+            atr_val = parts[4]
+            sl_val = parts[5] if len(parts) >= 6 else None
+            tp_val = parts[6] if len(parts) >= 7 else None
+            process_signal(signal, price, rsi_val, trend, atr_val, sl_val, tp_val)
             return jsonify({"ok": True})
-        tg("Команды: /buy /sell /status /report /learn", chat)
+        
+        tg("Команды: /buy /sell /status /report\nС авто SL/TP: /buy 4695 54 UP 10\nС ручным: /buy 4695 54 UP 10 4687 4720", chat)
         return jsonify({"ok": True})
     
     cb = d.get("callback_query", {})
@@ -507,7 +500,6 @@ def tg_webhook():
                 st(t)
                 evolve_weights(lw(), t)
             tg_answer(cb.get("id"), f"Marked {action.upper()}")
-            logger.info(f"Trade {tid} marked as {action}")
     return jsonify({"ok": True})
 
 def daily_report():
@@ -520,23 +512,11 @@ def daily_report():
             r = search_and_learn()
             t = lt(); lab = [x for x in t if x.get("outcome") in ("win","loss")]
             wins = sum(1 for x in lab if x["outcome"] == "win")
-            total = len(lab)
-            wr = round(wins/max(total,1)*100, 1) if total else 0
-            msg = f"🌅 *DAILY REPORT - {datetime.utcnow().strftime('%Y-%m-%d')}*\n\n"
-            msg += f"Trades: {len(t)} | Labeled: {total} | Executed: {total}\n"
-            msg += f"Winrate: {wr}% ({wins}/{total})\n\n"
-            msg += f"Bias: *{r.get('market_bias')}* | Signal: *{r.get('preferred_signal')}*\n"
-            msg += f"RSI: {r.get('rsi_oversold')}/{r.get('rsi_overbought')} | Risk: {r.get('risk_mode')}\n"
-            msg += f"Target: ${r.get('price_target')}\n\n"
-            msg += f"🧠 *Learned:*\n{r.get('narrative')}"
-            tg(msg)
-            logger.info("Daily report sent")
-        except Exception as e:
-            logger.error(f"Daily report error: {e}")
+            tg(f"📊 *DAILY REPORT*\nTrades: {len(t)} | Wins: {wins}\n{r.get('narrative')}")
+        except: pass
 
 threading.Thread(target=auto_loop, daemon=True).start()
 threading.Thread(target=daily_report, daemon=True).start()
-
 logger.info("XAU AI Trader started")
 
 if __name__ == "__main__":
