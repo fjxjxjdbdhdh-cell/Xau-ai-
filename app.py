@@ -31,8 +31,8 @@ from flask import Flask, jsonify, render_template_string, request
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 CHAT_ID = os.environ.get("CHAT_ID", "").strip()
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://openrouter.ai/api").rstrip("/")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-chat:free")
 PORT = int(os.environ.get("PORT", 5000))
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "xau-ai-secret")
@@ -134,6 +134,7 @@ def tg_send(text, chat_id=None, reply_markup=None, parse_mode="Markdown"):
     if not cid: return {"ok":False}
     payload = {"chat_id":cid, "text":text, "parse_mode":parse_mode, "disable_web_page_preview":True}
     if reply_markup: payload["reply_markup"] = reply_markup
+    logger.info(f"TG send to {cid}: {text[:80]}...")
     return _tg("sendMessage", payload)
 
 def tg_edit(chat_id, message_id, text, reply_markup=None):
@@ -423,7 +424,7 @@ def hourly_self_tune():
         except: pass
 
 # ────────────────────────────────────────────────────────────────────────────
-# DeepSeek Чат (свободное общение + трейдинг)
+# DeepSeek Чат (свободное общение + трейдинг) через OpenRouter
 # ────────────────────────────────────────────────────────────────────────────
 
 DEEPSEEK_SYSTEM = (
@@ -443,12 +444,30 @@ def deepseek_ask(question):
     wins = sum(1 for t in labeled if t["outcome"]=="win")
     wr = (wins/len(labeled)) if labeled else None
     context = f"Правила: {json.dumps(rules, ensure_ascii=False)[:800]}\nСделок: {len(trades)}, винрейт: {round(wr,3) if wr else 'нет'}\nБаза знаний: {kb.get('summary','—')}"
-    payload = {"model":DEEPSEEK_MODEL,"messages":[{"role":"system","content":DEEPSEEK_SYSTEM},{"role":"system","content":f"КОНТЕКСТ:\n{context}"},{"role":"user","content":question}],"temperature":0.5,"max_tokens":700}
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": DEEPSEEK_SYSTEM},
+            {"role": "system", "content": f"КОНТЕКСТ:\n{context}"},
+            {"role": "user", "content": question}
+        ],
+        "temperature": 0.5,
+        "max_tokens": 700
+    }
     try:
-        r = requests.post(f"{DEEPSEEK_BASE_URL}/v1/chat/completions", headers={"Authorization":f"Bearer {DEEPSEEK_API_KEY}","Content-Type":"application/json"}, json=payload, timeout=45)
-        if r.status_code!=200: return None, f"DeepSeek вернул {r.status_code}"
-        return r.json()["choices"][0]["message"]["content"].strip(), None
-    except Exception as e: return None, f"Ошибка DeepSeek: {e}"
+        # OpenRouter использует тот же формат API, что и DeepSeek
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": PUBLIC_URL or "https://xau-ai.onrender.com",
+            "X-Title": "XAU AI Trader"
+        }
+        r = requests.post(f"{DEEPSEEK_BASE_URL}/v1/chat/completions", headers=headers, json=payload, timeout=45)
+        if r.status_code != 200: return None, f"DeepSeek вернул {r.status_code}: {r.text[:200]}"
+        data = r.json()
+        return data["choices"][0]["message"]["content"].strip(), None
+    except Exception as e:
+        return None, f"Ошибка DeepSeek: {e}"
 
 # ────────────────────────────────────────────────────────────────────────────
 # Симулятор
@@ -457,7 +476,6 @@ def deepseek_ask(question):
 def sim_trade(signal, price, sl, tp):
     sim = load_simulator()
     trade = {"id":uuid.uuid4().hex[:8],"signal":signal,"price":price,"sl":sl,"tp":tp,"time":datetime.utcnow().isoformat(),"outcome":None}
-    # Симулируем результат (50/50 для демо)
     outcome = "win" if random.random()>0.5 else "loss"
     pnl = abs(float(tp)-float(price))*10 if outcome=="win" else -abs(float(price)-float(sl))*10
     trade["outcome"] = outcome
@@ -698,10 +716,14 @@ def welcome_text():
     )
 
 def _parse_trade_args(args):
+    """Разбор аргументов: ЦЕНА RSI ТРЕНД ATR (тренд на 3-й позиции, ATR на 4-й)"""
     if len(args)!=4: raise ValueError("Формат: ЦЕНА RSI ТРЕНД ATR\nПример: 4695 54 UP 10")
-    try: price,rsi,atr = float(args[0]),float(args[1]),float(args[2])
+    try:
+        price = float(args[0])
+        rsi = float(args[1])
+        atr = float(args[3])  # ATR — 4-й аргумент (индекс 3)
     except: raise ValueError("ЦЕНА, RSI и ATR должны быть числами.")
-    trend = args[3].upper()
+    trend = args[2].upper()  # ТРЕНД — 3-й аргумент (индекс 2)
     if trend not in ("UP","DOWN","FLAT"): raise ValueError("ТРЕНД должен быть UP, DOWN или FLAT.")
     return price,rsi,trend,atr
 
@@ -743,6 +765,9 @@ def format_best_ru():
 def handle_command(message):
     text = (message.get("text") or "").strip()
     chat_id = message.get("chat",{}).get("id")
+    
+    # Логируем каждое входящее сообщение
+    logger.info(f"TG msg from {chat_id}: {text[:100]}")
     
     # Свободный чат: если не команда → DeepSeek
     if text and not text.startswith("/"):
