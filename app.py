@@ -10,7 +10,9 @@ XAUUSD AI Trading Bot — single-file Flask app for GitHub → Render.
   • Finnhub API для реальных новостей и ЦЕНЫ XAUUSD 24/7
   • /price команда — текущая цена золота с рынка
   • /menu — меню с кнопками
+  • /users — список пользователей
   • Авто-сигналы в Telegram при уверенности >70%
+  • DeepSeek знает реальную цену XAUUSD
   • Авто-перестройка правил, ежечасный self-tuning порога уверенности
   • Telegram-бот: команды на русском + свободный чат через DeepSeek
   • Проактивные сигналы при уверенности > 85%
@@ -144,14 +146,12 @@ def tg_send(text, chat_id=None, reply_markup=None, parse_mode="Markdown"):
     if reply_markup: payload["reply_markup"] = reply_markup
     logger.info(f"TG send to {cid}: {text[:80]}...")
     result = _tg("sendMessage", payload)
-    # Рассылка остальным пользователям
     for cid2 in CHAT_IDS[1:]:
         payload["chat_id"] = cid2
         _tg("sendMessage", payload)
     return result
 
 def tg_send_all(text, reply_markup=None, parse_mode="Markdown"):
-    """Отправить сообщение всем пользователям"""
     for cid in CHAT_IDS:
         tg_send(text, chat_id=cid, reply_markup=reply_markup, parse_mode=parse_mode)
 
@@ -605,7 +605,8 @@ DEEPSEEK_SYSTEM = (
     "Ты — дружелюбный ИИ-помощник и опытный трейдер по золоту (XAUUSD). "
     "Отвечай ТОЛЬКО на русском языке, естественно, как носитель. "
     "Можешь говорить на любые темы: трейдинг, рынок, новости, просто поболтать. "
-    "Если спрашивают о рынке — используй данные пользователя. "
+    "Ты имеешь доступ к реальной цене XAUUSD в реальном времени через Finnhub API. "
+    "Если спрашивают о рынке — используй данные пользователя и реальную цену. "
     "Будь конкретным, кратким и практичным. Не давай финансовых гарантий."
 )
 
@@ -617,7 +618,14 @@ def deepseek_ask(question):
     labeled = [t for t in trades if t.get("outcome") in ("win","loss")]
     wins = sum(1 for t in labeled if t["outcome"]=="win")
     wr = (wins/len(labeled)) if labeled else None
-    context = f"Правила: {json.dumps(rules, ensure_ascii=False)[:800]}\nСделок: {len(trades)}, винрейт: {round(wr,3) if wr else 'нет'}\nБаза знаний: {kb.get('summary','—')}"
+    price_data = get_current_xau_price()
+    if price_data and price_data.get("current"):
+        price_info = f"Текущая цена XAUUSD: ${price_data['current']:.2f}"
+        if price_data.get("change"):
+            price_info += f" (изменение: {price_data['change']:+.2f})"
+    else:
+        price_info = "Цена XAUUSD временно недоступна"
+    context = f"ТЫ ИМЕЕШЬ ДОСТУП К РЕАЛЬНОЙ ЦЕНЕ XAUUSD В РЕАЛЬНОМ ВРЕМЕНИ. {price_info}\nПравила: {json.dumps(rules, ensure_ascii=False)[:800]}\nСделок: {len(trades)}, винрейт: {round(wr,3) if wr else 'нет'}\nБаза знаний: {kb.get('summary','—')}"
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": [
@@ -891,6 +899,7 @@ def welcome_text():
         "• `/pinescripts` — мои индикаторы\n"
         "• `/best` — лучшие паттерны\n"
         "• `/ask <вопрос>` — спросить DeepSeek\n"
+        "• `/users` — кто получает сигналы\n"
         "• `/help` — эта справка\n"
         "• `/menu` — меню с кнопками\n\n"
         "*Свободный чат:* просто напишите мне сообщение — я отвечу через DeepSeek!\n"
@@ -1050,6 +1059,11 @@ def handle_command(message):
         tg_send(price_info, chat_id=chat_id)
         return True
     
+    if cmd == "/users":
+        users_list = "\n".join(f"• `{cid}`" for cid in CHAT_IDS)
+        tg_send(f"👥 *Пользователи получающие сигналы:*\n{users_list}", chat_id=chat_id)
+        return True
+    
     if cmd in ("/sim_buy","/sim_sell"):
         side = "BUY" if cmd=="/sim_buy" else "SELL"
         try: price,rsi,trend,atr = _parse_trade_args(args)
@@ -1145,7 +1159,7 @@ def handle_callback(cb):
             return
         tg_answer_callback(cb_id, "Некорректные данные")
         return
-
+    
     action,payload = data.split(":",1)
     
     if action == "alert_ok":
