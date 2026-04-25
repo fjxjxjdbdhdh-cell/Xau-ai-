@@ -9,7 +9,7 @@ XAUUSD AI Trading Bot — single-file Flask app for GitHub → Render.
   • Парсинг 16+ обучающих сайтов каждые 3 часа
   • Finnhub API для реальных новостей и ЦЕНЫ XAUUSD 24/7
   • /price команда — текущая цена золота с рынка
-  • Меню с кнопками при вводе /
+  • /menu — меню с кнопками
   • Авто-сигналы в Telegram при уверенности >70%
   • Авто-перестройка правил, ежечасный self-tuning порога уверенности
   • Telegram-бот: команды на русском + свободный чат через DeepSeek
@@ -412,7 +412,6 @@ FINANCE_SITES = [
     "alpari.ru","instaforex.ru","fxclub.org","fortrader.org","fortfs.com",
 ]
 
-# ★ НОВЫЕ ОБУЧАЮЩИЕ САЙТЫ ★
 LEARNING_SITES = [
     "https://www.tradingview.com/ideas/gold/",
     "https://www.tradingview.com/scripts/pine/",
@@ -469,9 +468,7 @@ def analyze_text(text):
     rsi_values = [int(m) for m in RSI_PATTERN.findall(text) if 0<=int(m)<=100]
     return {"bullish_hits":bullish,"bearish_hits":bearish,"risk_hits":risk,"rsi_mentions":rsi_values[:10],"sample_snippets":[s.strip() for s in text.split("\n") if s.strip()][:3]}
 
-# ★ НОВОЕ: Парсинг обучающих сайтов ★
 def scrape_learning_sites():
-    """Парсит 16 обучающих сайтов каждые 3 часа"""
     records = []
     for url in LEARNING_SITES:
         try:
@@ -509,7 +506,6 @@ def gather_insights():
         time.sleep(0.3)
     fn = finnhub_news()
     if fn: records.extend(fn)
-    # ★ Добавляем обучающие сайты ★
     learn = scrape_learning_sites()
     if learn: records.extend(learn)
     return records
@@ -884,9 +880,9 @@ def welcome_text():
         "• `/best` — лучшие паттерны\n"
         "• `/ask <вопрос>` — спросить DeepSeek\n"
         "• `/help` — эта справка\n"
-        "• `/` — меню с кнопками\n\n"
+        "• `/menu` — меню с кнопками\n\n"
         "*Свободный чат:* просто напишите мне сообщение — я отвечу через DeepSeek!\n"
-        "_При уверенности > 85% я сам пишу вам с предложением сделки._"+dyn
+        "_При уверенности > 70% я сам пишу вам с предложением сделки._"+dyn
     )
 
 def _parse_trade_args(args):
@@ -935,12 +931,7 @@ def format_best_ru():
     if not proven: return "🎯 *Паттерны*\n_Нужно минимум 3 сделки в группе._"
     return "🎯 *Топ паттернов*\n"+"\n".join(f"{i}. *{p['key'][0]}* / RSI *{p['key'][1]}* / тренд *{p['key'][2]}* → `{int(p['winrate']*100)}%` за {p['n']} сд." for i,p in enumerate(proven,1))
 
-# ────────────────────────────────────────────────────────────────────────────
-# АВТО-СИГНАЛЫ: бот сам пишет когда уверенность > 70%
-# ────────────────────────────────────────────────────────────────────────────
-
 def format_auto_signal(signal, price, sl, tp, confidence, insights_count):
-    """Форматировать авто-сигнал"""
     risk_pct = round(abs(price - sl) / price * 100, 2)
     rr = round(abs(tp - price) / abs(price - sl), 1) if abs(price - sl) > 0 else 0
     emoji = "🚨" if confidence >= 0.85 else "📊"
@@ -952,7 +943,6 @@ def format_auto_signal(signal, price, sl, tp, confidence, insights_count):
     )
 
 def auto_signal_checker():
-    """Фоновый поток: проверяет цену и отправляет авто-сигналы"""
     time.sleep(120)
     while True:
         try:
@@ -964,40 +954,29 @@ def auto_signal_checker():
             rules = load_rules()
             insights = load_insights()
             insights_count = len(insights)
-            
-            # Симулируем RSI и ATR (реальные данные из Finnhub их не дают, используем типичные значения)
             rsi_val = 50
             atr_val = 15
-            
-            # Определяем тренд по изменению цены
             change = price_data.get("change", 0)
             trend = "UP" if (change and change > 0) else "DOWN"
             
-            # Проверяем BUY сигнал
             if trend == "UP":
-                with _lock:
-                    weights = load_weights()
+                with _lock: weights = load_weights()
                 features = normalize_features("BUY", price, rsi_val, trend, atr_val)
                 conf = compute_confidence(features, weights)
                 raw = {"signal": "BUY", "price": price, "rsi": rsi_val, "trend": trend, "atr": atr_val}
                 conf, reasons, threshold = apply_rules(conf, raw, rules)
-                
                 if conf >= CONFIDENCE_THRESHOLD:
                     sl = round(price - atr_val * 0.8, 2)
                     tp = round(price + atr_val * 2.5, 2)
                     msg = format_auto_signal("BUY", price, sl, tp, conf, insights_count)
                     tg_send(msg)
                     logger.info(f"[AUTO-SIGNAL] BUY @ {price} | Conf: {conf}")
-            
-            # Проверяем SELL сигнал
             elif trend == "DOWN":
-                with _lock:
-                    weights = load_weights()
+                with _lock: weights = load_weights()
                 features = normalize_features("SELL", price, rsi_val, trend, atr_val)
                 conf = compute_confidence(features, weights)
                 raw = {"signal": "SELL", "price": price, "rsi": rsi_val, "trend": trend, "atr": atr_val}
                 conf, reasons, threshold = apply_rules(conf, raw, rules)
-                
                 if conf >= CONFIDENCE_THRESHOLD:
                     sl = round(price + atr_val * 0.8, 2)
                     tp = round(price - atr_val * 2.5, 2)
@@ -1029,8 +1008,8 @@ def handle_command(message):
     cmd = parts[0].split("@",1)[0].lower()
     args = parts[1:]
     
-    # МЕНЮ при вводе просто /
-    if cmd == "/":
+    # МЕНЮ при / или /menu
+    if cmd in ("/", "/menu"):
         keyboard = {
             "inline_keyboard": [
                 [{"text": "🟢 BUY", "callback_data": "menu_buy"},
@@ -1110,7 +1089,7 @@ def handle_command(message):
         process_signal(sig,price,rsi,trend,atr,source=f"dyn:{cmd}")
         return True
     
-    tg_send(f"❓ Неизвестная команда `{cmd}`. Введи `/` для меню или `/help` для справки.", chat_id=chat_id)
+    tg_send(f"❓ Неизвестная команда `{cmd}`. Введи `/menu` или `/help` для справки.", chat_id=chat_id)
     return True
 
 def handle_callback(cb):
@@ -1120,7 +1099,6 @@ def handle_callback(cb):
     chat_id = msg.get("chat",{}).get("id")
     message_id = msg.get("message_id")
     if ":" not in data:
-        # Обработка меню
         if data == "menu_buy":
             tg_answer_callback(cb_id, "Введи: /buy ЦЕНА RSI ТРЕНД ATR")
             tg_send("Введи команду:\n`/buy ЦЕНА RSI ТРЕНД ATR`\nПример: `/buy 4700 54 UP 10`", chat_id=chat_id)
