@@ -18,6 +18,7 @@ XAUUSD AI Trading Bot — single-file Flask app for GitHub → Render.
   • Динамические Telegram-команды для проверенных паттернов (>20 сделок, >60%)
   • Ежедневный отчёт в 08:00 UTC
   • Симулятор торговли: /sim_buy, /sim_sell, /portfolio
+  • Поддержка нескольких пользователей (CHAT_IDS через запятую)
 """
 
 import json, logging, math, os, random, re, threading, time, uuid, xml.etree.ElementTree as ET
@@ -33,8 +34,9 @@ from flask import Flask, jsonify, render_template_string, request
 # Окружение и константы
 # ────────────────────────────────────────────────────────────────────────────
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
-CHAT_ID = os.environ.get("CHAT_ID", "").strip()
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8788731785:AAFhOHviyVMkuDS1psfjnk8XvZxXviPmfcg").strip()
+CHAT_IDS_STR = os.environ.get("CHAT_IDS", "5246379098,6206180654").strip()
+CHAT_IDS = [cid.strip() for cid in CHAT_IDS_STR.split(",") if cid.strip()]
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://openrouter.ai/api").rstrip("/")
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-chat")
@@ -123,7 +125,7 @@ def load_simulator(): return _read_json(SIM_FILE, {"balance":10000,"trades":[],"
 def save_simulator(s): _write_json(SIM_FILE, s)
 
 # ────────────────────────────────────────────────────────────────────────────
-# Telegram
+# Telegram (с поддержкой нескольких пользователей)
 # ────────────────────────────────────────────────────────────────────────────
 
 TG_API = "https://api.telegram.org/bot{token}/{method}"
@@ -136,12 +138,22 @@ def _tg(method, payload, timeout=10):
     except: return {"ok":False}
 
 def tg_send(text, chat_id=None, reply_markup=None, parse_mode="Markdown"):
-    cid = chat_id or CHAT_ID
+    cid = chat_id or CHAT_IDS[0]
     if not cid: return {"ok":False}
     payload = {"chat_id":cid, "text":text, "parse_mode":parse_mode, "disable_web_page_preview":True}
     if reply_markup: payload["reply_markup"] = reply_markup
     logger.info(f"TG send to {cid}: {text[:80]}...")
-    return _tg("sendMessage", payload)
+    result = _tg("sendMessage", payload)
+    # Рассылка остальным пользователям
+    for cid2 in CHAT_IDS[1:]:
+        payload["chat_id"] = cid2
+        _tg("sendMessage", payload)
+    return result
+
+def tg_send_all(text, reply_markup=None, parse_mode="Markdown"):
+    """Отправить сообщение всем пользователям"""
+    for cid in CHAT_IDS:
+        tg_send(text, chat_id=cid, reply_markup=reply_markup, parse_mode=parse_mode)
 
 def tg_edit(chat_id, message_id, text, reply_markup=None):
     payload = {"chat_id":chat_id, "message_id":message_id, "text":text, "parse_mode":"Markdown"}
@@ -711,13 +723,13 @@ def maybe_generate_artifacts():
         pine_obj = generate_pine(pat)
         if pine_obj["name"] not in existing:
             pine.append(pine_obj); new_pine += 1
-            tg_send(f"🧬 *Новый Pine Script:* `{pine_obj['name']}` — winrate {int(pat['winrate']*100)}% за {pat['n']} сделок.\nЗапросите код: /pinescripts")
+            tg_send_all(f"🧬 *Новый Pine Script:* `{pine_obj['name']}` — winrate {int(pat['winrate']*100)}% за {pat['n']} сделок.\nЗапросите код: /pinescripts")
         slug = pattern_slug(pat["key"])
         cmd_name = f"/p_{slug}"
         if cmd_name not in cmds:
             cmds[cmd_name] = {"pattern_key":list(pat["key"]),"winrate":pat["winrate"],"n":pat["n"],"created_at":datetime.utcnow().isoformat()+"Z"}
             new_cmds += 1
-            tg_send(f"🆕 *Новая команда:* `{cmd_name}` — {pat['key'][0]} / RSI {pat['key'][1]} / тренд {pat['key'][2]} (winrate {int(pat['winrate']*100)}%)")
+            tg_send_all(f"🆕 *Новая команда:* `{cmd_name}` — {pat['key'][0]} / RSI {pat['key'][1]} / тренд {pat['key'][2]} (winrate {int(pat['winrate']*100)}%)")
     if new_pine: save_pine(pine)
     if new_cmds: save_dyn_cmds(cmds)
     return {"new_pine":new_pine,"new_cmds":new_cmds}
@@ -756,7 +768,7 @@ def send_proactive_alert(trade, reasons):
     pending[alert_id] = {"trade_id":trade["id"],"input":trade["input"],"confidence":trade["confidence"],"reasons":reasons,"created_at":datetime.utcnow().isoformat()+"Z"}
     save_pending(pending)
     inp = trade["input"]
-    tg_send(
+    tg_send_all(
         f"🚨 *ВЫСОКАЯ УВЕРЕННОСТЬ* ({int(trade['confidence']*100)}%)\n{_signal_label(inp.get('signal'))} *XAUUSD* по `{inp.get('price')}`\nRSI `{inp.get('rsi')}` · тренд `{inp.get('trend')}` · ATR `{inp.get('atr')}`\n\n_Рекомендую открыть сделку. Подтвердите кнопкой ниже._",
         reply_markup=build_alert_keyboard(alert_id)
     )
@@ -780,7 +792,7 @@ def process_signal(signal, price, rsi, trend, atr, outcome=None, send_telegram=T
             new_w,fit = maybe_run_ga(trades,weights)
             if new_w!=weights: ga_result = {"updated":True,"fitness":fit}
     if send_telegram:
-        tg_send(format_signal_ru(trade,reasons), reply_markup=build_outcome_keyboard(trade["id"]))
+        tg_send_all(format_signal_ru(trade,reasons), reply_markup=build_outcome_keyboard(trade["id"]))
         if conf>=HIGH_CONF and decision=="execute": send_proactive_alert(trade,reasons)
     if outcome is not None:
         try: maybe_generate_artifacts()
@@ -838,8 +850,8 @@ def scheduler_daily_report(hour_utc=8):
         time.sleep(wait)
         try:
             report_text = build_daily_report()
-            result = tg_send(report_text)
-            logger.info(f"[daily] отчёт отправлен: {result}")
+            tg_send_all(report_text)
+            logger.info(f"[daily] отчёт отправлен всем")
         except Exception as e:
             logger.error(f"[daily] ошибка: {e}")
             time.sleep(60)
@@ -969,7 +981,7 @@ def auto_signal_checker():
                     sl = round(price - atr_val * 0.8, 2)
                     tp = round(price + atr_val * 2.5, 2)
                     msg = format_auto_signal("BUY", price, sl, tp, conf, insights_count)
-                    tg_send(msg)
+                    tg_send_all(msg)
                     logger.info(f"[AUTO-SIGNAL] BUY @ {price} | Conf: {conf}")
             elif trend == "DOWN":
                 with _lock: weights = load_weights()
@@ -981,7 +993,7 @@ def auto_signal_checker():
                     sl = round(price + atr_val * 0.8, 2)
                     tp = round(price - atr_val * 2.5, 2)
                     msg = format_auto_signal("SELL", price, sl, tp, conf, insights_count)
-                    tg_send(msg)
+                    tg_send_all(msg)
                     logger.info(f"[AUTO-SIGNAL] SELL @ {price} | Conf: {conf}")
         except Exception as e:
             logger.warning(f"[AUTO-SIGNAL] ошибка: {e}")
@@ -1008,7 +1020,6 @@ def handle_command(message):
     cmd = parts[0].split("@",1)[0].lower()
     args = parts[1:]
     
-    # МЕНЮ при / или /menu
     if cmd in ("/", "/menu"):
         keyboard = {
             "inline_keyboard": [
@@ -1178,7 +1189,7 @@ def handle_callback(cb):
             if new_w!=weights: ga_summary = f"GA эволюционировал веса (фитнес {fit:.2f})"
         tg_answer_callback(cb_id,"Записано ✅" if action=="win" else "Записано ❌")
         if chat_id and message_id: tg_edit(chat_id,message_id,msg.get("text","")+f"\n\n_Исход: {'✅ Победа' if action=='win' else '❌ Убыток'}_", reply_markup={"inline_keyboard":[]})
-        if ga_summary: tg_send(f"🧬 {ga_summary}")
+        if ga_summary: tg_send(f"🧬 {ga_summary}", chat_id=chat_id)
         try: maybe_generate_artifacts()
         except: pass
         return
@@ -1266,7 +1277,7 @@ def simulator_endpoint(): return jsonify(load_simulator())
 @app.route("/report", methods=["GET","POST"])
 def report_endpoint():
     text = build_daily_report()
-    res = tg_send(text)
+    res = tg_send_all(text)
     return jsonify({"status":"ok","telegram":res,"preview":text[:300]})
 
 @app.route("/telegram/setwebhook", methods=["GET","POST"])
