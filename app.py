@@ -9,10 +9,10 @@ XAUUSD AI Trading Bot — single-file Flask app for GitHub → Render.
   • Finnhub API для реальных новостей 24/7
   • Авто-перестройка правил, ежечасный self-tuning порога уверенности
   • Telegram-бот: команды на русском + свободный чат через DeepSeek
-  • Проактивные сигналы при уверенности > 85%
+  • Проактивные сигналы при уверенности > 80%
   • Автогенерация Pine Script, когда найден прибыльный паттерн (>60% winrate)
   • Динамические Telegram-команды для проверенных паттернов (>20 сделок, >60%)
-  • Ежедневный отчёт в 08:00 UTC (теперь точно приходит!)
+  • Ежедневный отчёт в 08:00 UTC
   • Симулятор торговли: /sim_buy, /sim_sell, /portfolio
 """
 
@@ -33,7 +33,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 CHAT_ID = os.environ.get("CHAT_ID", "").strip()
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://openrouter.ai/api").rstrip("/")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-r1:free")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-chat")
 FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "").strip()
 PORT = int(os.environ.get("PORT", 5000))
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
@@ -54,7 +54,8 @@ DYN_CMDS_FILE = os.path.join(DATA_DIR, "dynamic_commands.json")
 PENDING_FILE = os.path.join(DATA_DIR, "pending_alerts.json")
 SIM_FILE = os.path.join(DATA_DIR, "simulator.json")
 
-CONFIDENCE_THRESHOLD = 0.5
+# ★ ИЗМЕНЕНО: порог уверенности 60% для 3-4 сигналов в день
+CONFIDENCE_THRESHOLD = 0.6
 HIGH_CONF = 0.85
 GA_INTERVAL = 10
 GA_POPULATION = 20
@@ -424,11 +425,13 @@ def derive_rules(insight_records, trade_history):
     historical_winrate = round(len(wins)/len(labeled),3) if labeled else None
     avg_win_conf = round(sum(t["confidence"] for t in wins)/len(wins),3) if wins else None
     avg_loss_conf = round(sum(t["confidence"] for t in losses)/len(losses),3) if losses else None
-    suggested_threshold = round((avg_win_conf+avg_loss_conf)/2,3) if (avg_win_conf and avg_loss_conf) else 0.5
+    # ★ ИЗМЕНЕНО: порог 60% вместо suggested_threshold
+    suggested_threshold = 0.6
     return {"generated_at":datetime.utcnow().isoformat()+"Z","market_bias":market_bias,"bias_strength":bias_strength,"preferred_signal":"BUY" if market_bias=="bullish" else "SELL" if market_bias=="bearish" else "HOLD","rsi_oversold":rsi_oversold,"rsi_overbought":rsi_overbought,"price_target":price_target,"risk_mode":risk_mode,"atr_caution_above":30 if risk_mode=="elevated" else 50,"confidence_threshold":suggested_threshold,"historical_winrate":historical_winrate,"based_on":{"insight_records":len(insight_records),"labeled_trades":len(labeled)}}
 
 def default_rules():
-    return {"generated_at":datetime.utcnow().isoformat()+"Z","market_bias":"neutral","bias_strength":0,"preferred_signal":"HOLD","rsi_oversold":30,"rsi_overbought":70,"price_target":None,"risk_mode":"normal","atr_caution_above":50,"confidence_threshold":0.5,"historical_winrate":None,"based_on":{"insight_records":0,"labeled_trades":0}}
+    # ★ ИЗМЕНЕНО: порог 60% по умолчанию
+    return {"generated_at":datetime.utcnow().isoformat()+"Z","market_bias":"neutral","bias_strength":0,"preferred_signal":"HOLD","rsi_oversold":30,"rsi_overbought":70,"price_target":None,"risk_mode":"normal","atr_caution_above":50,"confidence_threshold":0.6,"historical_winrate":None,"based_on":{"insight_records":0,"labeled_trades":0}}
 
 def evolve_insights(trade_history):
     new_records = gather_insights()
@@ -452,7 +455,7 @@ def hourly_self_tune():
             if len(labeled)<10: continue
             wr = sum(1 for t in labeled if t["outcome"]=="win")/len(labeled)
             rules = load_rules()
-            old = float(rules.get("confidence_threshold") or 0.5)
+            old = float(rules.get("confidence_threshold") or 0.6)
             new = round(max(0.4,min(0.7,old+(0.6-wr)*0.1)),3)
             if abs(new-old)>=0.005:
                 rules["confidence_threshold"] = new
@@ -757,7 +760,7 @@ def welcome_text():
         "• `/ask <вопрос>` — спросить DeepSeek\n"
         "• `/help` — эта справка\n\n"
         "*Свободный чат:* просто напишите мне сообщение — я отвечу через DeepSeek!\n"
-        "_При уверенности > 85% я сам пишу вам с предложением сделки._"+dyn
+        "_При уверенности > 80% я сам пишу вам с предложением сделки._"+dyn
     )
 
 def _parse_trade_args(args):
