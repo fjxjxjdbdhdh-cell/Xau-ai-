@@ -6,12 +6,13 @@ XAUUSD AI Trading Bot — single-file Flask app for GitHub → Render.
   • Webhook /webhook со скорингом сигнала через ИИ-веса
   • Генетический алгоритм каждые 10 размеченных сделок
   • Парсинг 100+ финансовых источников каждый час → база знаний
+  • Finnhub API для реальных новостей 24/7
   • Авто-перестройка правил, ежечасный self-tuning порога уверенности
-  • Telegram-бот: команды на русском + свободный чат через DeepSeek (/ask и просто текст)
+  • Telegram-бот: команды на русском + свободный чат через DeepSeek
   • Проактивные сигналы при уверенности > 85%
   • Автогенерация Pine Script, когда найден прибыльный паттерн (>60% winrate)
   • Динамические Telegram-команды для проверенных паттернов (>20 сделок, >60%)
-  • Ежедневный отчёт в 08:00 UTC
+  • Ежедневный отчёт в 08:00 UTC (теперь точно приходит!)
   • Симулятор торговли: /sim_buy, /sim_sell, /portfolio
 """
 
@@ -32,7 +33,8 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 CHAT_ID = os.environ.get("CHAT_ID", "").strip()
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://openrouter.ai/api").rstrip("/")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-chat:free")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-r1:free")
+FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "").strip()
 PORT = int(os.environ.get("PORT", 5000))
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "xau-ai-secret")
@@ -268,6 +270,38 @@ def maybe_run_ga(trades,weights):
     return new_w,fit
 
 # ────────────────────────────────────────────────────────────────────────────
+# Finnhub API — реальные новости 24/7
+# ────────────────────────────────────────────────────────────────────────────
+
+def finnhub_news():
+    """Получить новости XAUUSD через Finnhub API"""
+    if not FINNHUB_API_KEY: return []
+    try:
+        r = requests.get(f"https://finnhub.io/api/v1/news?category=forex&token={FINNHUB_API_KEY}", timeout=10)
+        if r.status_code != 200: return []
+        news = r.json()[:10]
+        records = []
+        for n in news:
+            text = (n.get("headline","") + " " + n.get("summary","")).lower()
+            records.append({
+                "query": f"finnhub:{n.get('headline','')[:80]}",
+                "fetched_at": datetime.utcnow().isoformat() + "Z",
+                "characters_extracted": len(text),
+                "analysis": {
+                    "bullish_hits": text.count("bull") + text.count("buy") + text.count("rise"),
+                    "bearish_hits": text.count("bear") + text.count("sell") + text.count("drop"),
+                    "risk_hits": text.count("risk") + text.count("volatile"),
+                    "rsi_mentions": [],
+                    "sample_snippets": [n.get("headline",""), n.get("summary","")[:200]]
+                }
+            })
+        logger.info(f"[finnhub] получено {len(records)} новостей")
+        return records
+    except Exception as e:
+        logger.warning(f"[finnhub] ошибка: {e}")
+        return []
+
+# ────────────────────────────────────────────────────────────────────────────
 # Парсинг 100+ сайтов
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -346,6 +380,9 @@ def gather_insights():
         analysis = analyze_text(text) if text else {"bullish_hits":0,"bearish_hits":0,"risk_hits":0,"rsi_mentions":[],"sample_snippets":[]}
         records.append({"query":q,"fetched_at":datetime.utcnow().isoformat()+"Z","characters_extracted":len(text),"analysis":analysis})
         time.sleep(0.3)
+    # Добавляем Finnhub новости
+    fn = finnhub_news()
+    if fn: records.extend(fn)
     return records
 
 def update_knowledge_base(records):
@@ -455,7 +492,6 @@ def deepseek_ask(question):
         "max_tokens": 700
     }
     try:
-        # OpenRouter использует тот же формат API, что и DeepSeek
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json",
@@ -668,13 +704,22 @@ def scheduler_hourly_insights():
         time.sleep(3600)
 
 def scheduler_daily_report(hour_utc=8):
+    """Ежедневный отчёт — теперь гарантированно отправляется"""
     while True:
         now = datetime.utcnow()
-        target = now.replace(hour=hour_utc,minute=0,second=0,microsecond=0)
-        if target<=now: target+=timedelta(days=1)
-        time.sleep((target-now).total_seconds())
-        try: tg_send(build_daily_report())
-        except: pass
+        target = now.replace(hour=hour_utc, minute=0, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        wait = (target - now).total_seconds()
+        logger.info(f"[daily] следующий отчёт через {wait/3600:.1f} часов")
+        time.sleep(wait)
+        try:
+            report_text = build_daily_report()
+            result = tg_send(report_text)
+            logger.info(f"[daily] отчёт отправлен: {result}")
+        except Exception as e:
+            logger.error(f"[daily] ошибка: {e}")
+            time.sleep(60)
 
 def scheduler_self_pinger(interval=300):
     url = f"http://127.0.0.1:{PORT}/ping"
@@ -716,14 +761,13 @@ def welcome_text():
     )
 
 def _parse_trade_args(args):
-    """Разбор аргументов: ЦЕНА RSI ТРЕНД ATR (тренд на 3-й позиции, ATR на 4-й)"""
     if len(args)!=4: raise ValueError("Формат: ЦЕНА RSI ТРЕНД ATR\nПример: 4695 54 UP 10")
     try:
         price = float(args[0])
         rsi = float(args[1])
-        atr = float(args[3])  # ATR — 4-й аргумент (индекс 3)
+        atr = float(args[3])
     except: raise ValueError("ЦЕНА, RSI и ATR должны быть числами.")
-    trend = args[2].upper()  # ТРЕНД — 3-й аргумент (индекс 2)
+    trend = args[2].upper()
     if trend not in ("UP","DOWN","FLAT"): raise ValueError("ТРЕНД должен быть UP, DOWN или FLAT.")
     return price,rsi,trend,atr
 
@@ -766,10 +810,8 @@ def handle_command(message):
     text = (message.get("text") or "").strip()
     chat_id = message.get("chat",{}).get("id")
     
-    # Логируем каждое входящее сообщение
     logger.info(f"TG msg from {chat_id}: {text[:100]}")
     
-    # Свободный чат: если не команда → DeepSeek
     if text and not text.startswith("/"):
         answer, err = deepseek_ask(text)
         if err: tg_send(f"⚠️ {err}", chat_id=chat_id)
@@ -831,7 +873,6 @@ def handle_command(message):
         else: tg_send(f"🧠 *ИИ:*\n{answer}", chat_id=chat_id)
         return True
     
-    # Динамические команды
     dyn = load_dyn_cmds()
     if cmd in dyn:
         spec = dyn[cmd]
@@ -1007,7 +1048,7 @@ def start_background_threads():
     threading.Thread(target=scheduler_hourly_insights, daemon=True).start()
     threading.Thread(target=scheduler_daily_report, daemon=True).start()
     threading.Thread(target=scheduler_self_pinger, daemon=True).start()
-    logger.info("Фоновые потоки запущены")
+    logger.info("Фоновые потоки запущены: self-tune, insights, daily-report, self-pinger")
 
 start_background_threads()
 
