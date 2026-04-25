@@ -1139,6 +1139,10 @@ def handle_callback(cb):
             tg_answer_callback(cb_id, "Открываю помощь...")
             tg_send(welcome_text(), chat_id=chat_id)
             return
+       if cmd == "/users":
+        users_list = "\n".join(f"• `{cid}`" for cid in CHAT_IDS)
+        tg_send(f"👥 *Пользователи получающие сигналы:*\n{users_list}", chat_id=chat_id)
+        return True
         if data == "menu_ask":
             tg_answer_callback(cb_id, "Задай вопрос после /ask")
             tg_send("Используй: `/ask твой вопрос`", chat_id=chat_id)
