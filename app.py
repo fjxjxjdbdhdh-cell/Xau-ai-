@@ -1,3711 +1,1124 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    XAU AI Trader — ПОЛНАЯ ВЕРСИЯ v3.0                      ║
-║                                                                            ║
-║  8 правил входа  |  Депозит: $200  |  Лот: 0.02  |  Риск: 7%             ║
-║  Подписки: Free / VIP ($20) / Admin                                       ║
-║  Депозит / Вывод на Bybit UID: 495132302                                  ║
-║  Регистрация Email + Пароль                                               ║
-║  AI Чат DeepSeek (OpenRouter)                                             ║
-║  График TradingView (МСК)                                                 ║
-║  Защита: стоп -$15, стоп +$18, лимит 5 сделок/день, стоп 3/5 прибыльных  ║
-║  Авто-сигналы каждые 5 минут                                              ║
-║  Генетический алгоритм каждые 10 сделок                                   ║
-║  Сбор данных со 100+ сайтов                                               ║
-║  Telegram бот с кнопками и меню                                           ║
-║  Симулятор торговли                                                       ║
-║  Дневной отчёт                                                            ║
-║  MetaTrader 5 подключение                                                 ║
-║  Смена темы (VIP)                                                         ║
-║  Админ-панель (управление пользователями, депозитами, выводами)          ║
-║                                                                            ║
-║  GitHub: https://github.com/fjxjxjdbhdhdh-cell/Xau-ai-                    ║
+║              XAU AI Trader — ПОЛНОЦЕННАЯ БИРЖА v4.0                        ║
+║  8 правил входа  |  Депозит: $200  |  Лот: 0.02  |  Риск: 7%              ║
+║  Free / VIP ($20) / Admin  |  Bybit UID: 495132302                         ║
+║  Регистрация  |  AI DeepSeek  |  TradingView  |  Telegram Bot              ║
+║  100+ источников  |  Генетика  |  Авто-сигналы  |  Защита                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ИМПОРТЫ
-# ══════════════════════════════════════════════════════════════════════════════
-
-import os           # Работа с файловой системой и переменными окружения
-import json         # Чтение/запись JSON файлов (базы данных)
-import math         # Математические функции (exp, log и т.д.)
-import random       # Генерация случайных чисел (для симуляций и генетики)
-import logging      # Логирование событий
-import threading    # Многопоточность (фоновые процессы)
-import time         # Работа со временем (sleep, time)
-import uuid         # Генерация уникальных идентификаторов
-import re           # Регулярные выражения (парсинг текста)
-import hashlib      # Хеширование паролей (SHA-256)
-import secrets      # Генерация криптографически безопасных токенов
-from datetime import datetime, timedelta  # Работа с датами
-from collections import defaultdict        # Словари с значениями по умолчанию
-from urllib.parse import quote_plus        # Кодирование URL
-from functools import wraps                # Декораторы
-
-import requests     # HTTP запросы (API, парсинг)
-from flask import (  # Веб-фреймворк
-    Flask,
-    request,
-    jsonify,
-    render_template_string,
-    redirect,
-    session,
-    url_for
-)
+import json, logging, math, os, random, re, threading, time, uuid, hashlib, secrets
+from collections import defaultdict, deque
+from datetime import datetime, timedelta
+from functools import wraps
+from urllib.parse import quote_plus
+import requests
+from bs4 import BeautifulSoup
+from flask import Flask, jsonify, render_template_string, request, redirect, session
 
 # ══════════════════════════════════════════════════════════════════════════════
-# КОНФИГУРАЦИЯ ОКРУЖЕНИЯ
+# КОНФИГУРАЦИЯ — ВСЕ КЛЮЧИ ЗДЕСЬ
 # ══════════════════════════════════════════════════════════════════════════════
 
-# --- ВАШИ ЛИЧНЫЕ ДАННЫЕ (ПЛАТЕЖИ) ---
-MY_BYBIT_UID = os.environ.get(
-    "MY_BYBIT_UID",
-    "495132302"  # Ваш Bybit UID для приёма платежей
-)
-MY_USDT_ADDRESS = os.environ.get(
-    "MY_USDT_ADDRESS",
-    "TPLcirURegRqaAV1CWXw6EVvL4kF8kNm8a"  # Ваш TRC20 адрес
-)
-MY_BYBIT_EMAIL = os.environ.get(
-    "MY_BYBIT_EMAIL",
-    "fijx@email.com"  # Ваша почта Bybit
-)
+MY_BYBIT_UID = os.environ.get("MY_BYBIT_UID", "495132302")
+MY_USDT_ADDRESS = os.environ.get("MY_USDT_ADDRESS", "TPLcirURegRqaAV1CWXw6EVvL4kF8kNm8a")
+MY_BYBIT_EMAIL = os.environ.get("MY_BYBIT_EMAIL", "fijx@email.com")
 
-# --- TELEGRAM ---
-TELEGRAM_TOKEN = os.environ.get(
-    "TELEGRAM_TOKEN",
-    "8788731785:AAFhOHviyVMkuDS1psfjnk8XvZxXviPmfcg"  # Токен бота
-)
-CHAT_IDS_STR = os.environ.get(
-    "CHAT_IDS",
-    "5246379098,6206180654"  # Ваш ID и ID друга
-)
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8788731785:AAFhOHviyVMkuDS1psfjnk8XvZxXviPmfcg").strip()
+CHAT_IDS_STR = os.environ.get("CHAT_IDS", "5246379098,6206180654").strip()
 CHAT_IDS = [cid.strip() for cid in CHAT_IDS_STR.split(",") if cid.strip()]
 MY_TELEGRAM_ID = CHAT_IDS[0] if CHAT_IDS else "5246379098"
 FRIEND_TELEGRAM_ID = CHAT_IDS[1] if len(CHAT_IDS) > 1 else "6206180654"
 ADMIN_TELEGRAM_IDS = [MY_TELEGRAM_ID, FRIEND_TELEGRAM_ID]
 
-# --- API КЛЮЧИ ---
-FINNHUB_API_KEY = os.environ.get(
-    "FINNHUB_API_KEY",
-    "d7mcshpr01qngrvnp3dgd7mcshpr01qngrvnp3e0"  # Finnhub для цен
-)
-DEEPSEEK_API_KEY = os.environ.get(
-    "DEEPSEEK_API_KEY",
-    "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"
-)
-DEEPSEEK_BASE_URL = os.environ.get(
-    "DEEPSEEK_BASE_URL",
-    "https://openrouter.ai/api"
-).rstrip("/")
-DEEPSEEK_MODEL = os.environ.get(
-    "DEEPSEEK_MODEL",
-    "deepseek/deepseek-chat"
-)
-OPENROUTER_API_KEY = os.environ.get(
-    "OPENROUTER_API_KEY",
-    DEEPSEEK_API_KEY
-)
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "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").strip()
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://openrouter.ai/api").rstrip("/")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek/deepseek-chat")
+FINNHUB_API_KEY = os.environ.get("FINNHUB_API_KEY", "d7mcshpr01qngrvnp3dgd7mcshpr01qngrvnp3e0").strip()
 
-# --- FLASK ---
 PORT = int(os.environ.get("PORT", 5000))
-PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
 SECRET_KEY = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
-# --- АДМИНЫ ---
-ADMIN_EMAILS = [
-    "admin@xau.ai",    # Ваш админский email
-    "friend@xau.ai"    # Email друга-админа
-]
+ADMIN_EMAILS = ["admin@xau.ai", "friend@xau.ai"]
+VIP_PRICE_USD = 20
+MAX_FREE_AI_MESSAGES = 25
 
-# --- ЦЕНЫ И ЛИМИТЫ ---
-VIP_PRICE_USD = 20                # Стоимость VIP подписки
-MAX_FREE_AI_MESSAGES = 25         # Лимит AI сообщений для Free
-
-# ══════════════════════════════════════════════════════════════════════════════
-# КОНСТАНТЫ ПРИЛОЖЕНИЯ
-# ══════════════════════════════════════════════════════════════════════════════
-
-# --- ПУТИ К ФАЙЛАМ ДАННЫХ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-os.makedirs(DATA_DIR, exist_ok=True)  # Создаём папку data если её нет
+os.makedirs(DATA_DIR, exist_ok=True)
 
+# Файлы данных
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 TRADES_FILE = os.path.join(DATA_DIR, "trades.json")
 WEIGHTS_FILE = os.path.join(DATA_DIR, "weights.json")
 RULES_FILE = os.path.join(DATA_DIR, "rules.json")
-SIMULATOR_FILE = os.path.join(DATA_DIR, "simulator.json")
 INSIGHTS_FILE = os.path.join(DATA_DIR, "insights.json")
 KNOWLEDGE_FILE = os.path.join(DATA_DIR, "knowledge_base.json")
-PINE_SCRIPTS_FILE = os.path.join(DATA_DIR, "pine_scripts.json")
-DYNAMIC_COMMANDS_FILE = os.path.join(DATA_DIR, "dynamic_commands.json")
-PENDING_ALERTS_FILE = os.path.join(DATA_DIR, "pending_alerts.json")
+PINE_FILE = os.path.join(DATA_DIR, "pine_scripts.json")
+DYN_CMDS_FILE = os.path.join(DATA_DIR, "dynamic_commands.json")
+PENDING_FILE = os.path.join(DATA_DIR, "pending_alerts.json")
+SIM_FILE = os.path.join(DATA_DIR, "simulator.json")
 DEPOSITS_FILE = os.path.join(DATA_DIR, "deposits.json")
 WITHDRAWALS_FILE = os.path.join(DATA_DIR, "withdrawals.json")
 MT5_CONFIGS_FILE = os.path.join(DATA_DIR, "mt5_configs.json")
 PROTECTION_FILE = os.path.join(DATA_DIR, "protection.json")
-NOTIFICATIONS_FILE = os.path.join(DATA_DIR, "notifications.json")
 LOG_FILE = os.path.join(DATA_DIR, "trades.log")
 
-# --- ТОРГОВЫЕ КОНСТАНТЫ ---
-ACCOUNT_BALANCE = 200.0      # Начальный депозит
-TRADE_LOT = 0.02            # Размер лота
-RISK_PERCENT = 0.07         # Риск на сделку (7% = $14 из $200)
-CONFIDENCE_THRESHOLD = 0.70 # Порог уверенности ИИ (70%)
-HIGH_CONFIDENCE = 0.85      # Порог высокой уверенности
-ATR_MIN = 10.0              # Минимальный ATR
-ATR_MAX = 25.0              # Максимальный ATR
-EMA_MAX_DIFF = 6.5          # Максимальная разница EMA
-RSI_BUY_MIN = 48.0          # RSI минимум для BUY
-RSI_SELL_MAX = 52.0         # RSI максимум для SELL
-SESSION_START_MINUTES = 30  # Не торговать первые 30 минут сессии
+# Торговые константы
+ACCOUNT_BALANCE = 200.0
+TRADE_LOT = 0.02
+RISK_PERCENT = 0.07
+CONFIDENCE_THRESHOLD = 0.70
+HIGH_CONF = 0.85
+ATR_MIN = 10.0
+ATR_MAX = 25.0
+EMA_MAX_DIFF = 6.5
+RSI_BUY_MIN = 48.0
+RSI_SELL_MAX = 52.0
+SESSION_START_MINUTES = 30
 
-# --- ЗАЩИТА ОТ УБЫТКОВ ---
-MAX_DAILY_LOSS = 15.0           # Максимальный дневной убыток
-MAX_DAILY_PROFIT = 18.0         # Максимальная дневная прибыль (стоп)
-MAX_DAILY_TRADES = 5            # Лимит сделок в день
-STOP_AFTER_PROFITABLE = 3       # Стоп после 3 прибыльных из 5
-CONSECUTIVE_LOSS_STOP = 3       # Стоп после 3 убытков подряд
-COOLDOWN_MINUTES = 60           # Пауза после срабатывания защиты
-MIN_CONFIDENCE_AFTER_LOSS = 0.75  # Повышенный порог после убытков
+# Защита
+MAX_DAILY_LOSS = 15.0
+MAX_DAILY_PROFIT = 18.0
+MAX_DAILY_TRADES = 5
+STOP_AFTER_PROFITABLE = 3
+CONSECUTIVE_LOSS_STOP = 3
+COOLDOWN_MINUTES = 60
+MIN_CONFIDENCE_AFTER_LOSS = 0.75
 
-# --- ГЕНЕТИЧЕСКИЙ АЛГОРИТМ ---
-GA_INTERVAL = 10           # Запуск каждые 10 размеченных сделок
-GA_POPULATION = 20          # Размер популяции
-GA_GENERATIONS = 15         # Количество поколений
-GA_MUTATION_RATE = 0.2      # Частота мутаций
-DEFAULT_WEIGHTS = {
-    "сигнал": 0.30,
-    "цена": 0.10,
-    "rsi": 0.25,
-    "тренд": 0.25,
-    "atr": 0.10
-}
+# Генетика
+GA_INTERVAL = 10
+GA_POPULATION = 20
+GA_GENERATIONS = 15
+GA_MUTATION_RATE = 0.2
+DEFAULT_WEIGHTS = {"signal": 0.30, "price": 0.10, "rsi": 0.25, "trend": 0.25, "atr": 0.10}
+
+# Парсинг
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+FINANCE_SITES = [
+    "investing.com","fxstreet.com","dailyfx.com","kitco.com","tradingview.com",
+    "marketwatch.com","bloomberg.com","reuters.com","cnbc.com","ft.com",
+    "wsj.com","forbes.com","businessinsider.com","finance.yahoo.com","finviz.com",
+    "seekingalpha.com","zerohedge.com","macrotrends.net","fxempire.com","forexlive.com",
+    "goldprice.org","gold.org","fxleaders.com","pepperstone.com","icmarkets.com"
+]
+LEARNING_SITES = [
+    "https://www.tradingview.com/ideas/gold/",
+    "https://www.tradingview.com/scripts/pine/",
+    "https://www.investopedia.com/articles/trading/",
+    "https://www.babypips.com/learn/forex",
+    "https://www.fxacademy.com/",
+    "https://www.dailyfx.com/forex-education"
+]
+QUERIES_TPL = [
+    "XAUUSD прогноз цена золота","XAUUSD technical analysis today","gold price forecast {y}",
+    "XAUUSD support resistance levels","gold COT report futures positioning",
+    "DXY dollar index XAUUSD correlation","Federal Reserve rate decision gold impact"
+]
+BULLISH_TERMS = ["bullish","rally","uptrend","buy","long","рост","покупка","вверх","бычий"]
+BEARISH_TERMS = ["bearish","decline","downtrend","sell","short","падение","продажа","вниз","медвежий"]
+RISK_TERMS = ["volatility","volatile","risk","uncertainty","atr","волатильность","риск"]
+RSI_PATTERN = re.compile(r"\brsi\b[^\d]{0,12}(\d{1,3})", re.IGNORECASE)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# НАСТРОЙКА ЛОГГИРОВАНИЯ
+# ЛОГГИРОВАНИЕ
 # ══════════════════════════════════════════════════════════════════════════════
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    handlers=[
-        logging.StreamHandler(),  # Вывод в консоль
-        logging.FileHandler(LOG_FILE, encoding="utf-8")  # Запись в файл
-    ]
-)
-logger = logging.getLogger("XAU-AI")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logger = logging.getLogger("xau-ai")
+trade_log = logging.getLogger("trades")
+trade_log.setLevel(logging.INFO)
+if not any(isinstance(h, logging.FileHandler) for h in trade_log.handlers):
+    fh = logging.FileHandler(LOG_FILE)
+    fh.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
+    trade_log.addHandler(fh)
 
-# Блокировка для потокобезопасной работы с JSON файлами
-блокировка = threading.Lock()
+_lock = threading.Lock()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С JSON
+# JSON ФУНКЦИИ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def прочитать_json(путь_к_файлу, значение_по_умолчанию):
-    """
-    Безопасное чтение JSON файла.
-    
-    Аргументы:
-        путь_к_файлу: путь к JSON файлу
-        значение_по_умолчанию: что вернуть если файл не существует
-        
-    Возвращает:
-        Данные из файла или значение по умолчанию
-    """
-    if not os.path.exists(путь_к_файлу):
-        logger.debug(f"Файл не найден: {путь_к_файлу}, возвращаю значение по умолчанию")
-        return значение_по_умолчанию
-    
+def _read_json(path, default):
+    if not os.path.exists(path): return default
     try:
-        with open(путь_к_файлу, "r", encoding="utf-8") as файл:
-            данные = json.load(файл)
-            logger.debug(f"Прочитан файл: {путь_к_файлу} ({len(str(данные))} байт)")
-            return данные
-    except json.JSONDecodeError as ошибка:
-        logger.error(f"Ошибка парсинга JSON в {путь_к_файлу}: {ошибка}")
-        return значение_по_умолчанию
-    except Exception as ошибка:
-        logger.error(f"Ошибка чтения {путь_к_файлу}: {ошибка}")
-        return значение_по_умолчанию
+        with open(path, "r", encoding="utf-8") as f: return json.load(f)
+    except: return default
 
+def _write_json(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
-def записать_json(путь_к_файлу, данные):
-    """
-    Безопасная запись JSON файла.
-    
-    Аргументы:
-        путь_к_файлу: путь к JSON файлу
-        данные: данные для записи
-    """
-    try:
-        # Сначала пишем во временный файл, потом переименовываем
-        временный_файл = путь_к_файлу + ".tmp"
-        with open(временный_файл, "w", encoding="utf-8") as файл:
-            json.dump(данные, файл, ensure_ascii=False, indent=2)
-        os.replace(временный_файл, путь_к_файлу)
-        logger.debug(f"Записан файл: {путь_к_файлу}")
-    except Exception as ошибка:
-        logger.error(f"Ошибка записи {путь_к_файлу}: {ошибка}")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ФУНКЦИИ ЗАГРУЗКИ/СОХРАНЕНИЯ ДАННЫХ
-# ══════════════════════════════════════════════════════════════════════════════
-
-def загрузить_пользователей():
-    """Загрузка базы пользователей"""
-    return прочитать_json(USERS_FILE, {})
-
-
-def сохранить_пользователей(данные):
-    """Сохранение базы пользователей"""
-    записать_json(USERS_FILE, данные)
-
-
-def загрузить_сделки():
-    """Загрузка истории сделок"""
-    return прочитать_json(TRADES_FILE, [])
-
-
-def сохранить_сделки(данные):
-    """Сохранение истории сделок"""
-    записать_json(TRADES_FILE, данные)
-
-
-def загрузить_веса():
-    """Загрузка весов ИИ (генетический алгоритм)"""
-    веса = прочитать_json(WEIGHTS_FILE, None)
-    if not isinstance(веса, dict) or set(веса.keys()) != set(DEFAULT_WEIGHTS.keys()):
-        return dict(DEFAULT_WEIGHTS)
-    return веса
-
-
-def сохранить_веса(данные):
-    """Сохранение весов ИИ"""
-    записать_json(WEIGHTS_FILE, данные)
-
-
-def загрузить_правила():
-    """Загрузка торговых правил"""
-    return прочитать_json(RULES_FILE, стандартные_правила())
-
-
-def сохранить_правила(данные):
-    """Сохранение торговых правил"""
-    записать_json(RULES_FILE, данные)
-
-
-def загрузить_симулятор():
-    """Загрузка состояния симулятора"""
-    return прочитать_json(SIMULATOR_FILE, {
-        "баланс": ACCOUNT_BALANCE,
-        "сделки": [],
-        "дневной_pnl": 0.0,
-        "начало_дня": datetime.utcnow().isoformat()
+def load_users(): return _read_json(USERS_FILE, {})
+def save_users(u): _write_json(USERS_FILE, u)
+def load_trades(): return _read_json(TRADES_FILE, [])
+def save_trades(t): _write_json(TRADES_FILE, t)
+def load_weights():
+    w = _read_json(WEIGHTS_FILE, None)
+    if not isinstance(w, dict) or set(w.keys()) != set(DEFAULT_WEIGHTS.keys()): return dict(DEFAULT_WEIGHTS)
+    return w
+def save_weights(w): _write_json(WEIGHTS_FILE, w)
+def load_rules(): return _read_json(RULES_FILE, default_rules())
+def save_rules(r): _write_json(RULES_FILE, r)
+def load_insights(): return _read_json(INSIGHTS_FILE, [])
+def load_knowledge(): return _read_json(KNOWLEDGE_FILE, {"snippets":[],"summary":"","updated_at":None})
+def save_knowledge(kb): _write_json(KNOWLEDGE_FILE, kb)
+def load_pine(): return _read_json(PINE_FILE, [])
+def save_pine(p): _write_json(PINE_FILE, p)
+def load_dyn_cmds(): return _read_json(DYN_CMDS_FILE, {})
+def save_dyn_cmds(d): _write_json(DYN_CMDS_FILE, d)
+def load_pending(): return _read_json(PENDING_FILE, {})
+def save_pending(p): _write_json(PENDING_FILE, p)
+def load_simulator(): return _read_json(SIM_FILE, {"balance":ACCOUNT_BALANCE,"trades":[],"daily_pnl":0,"daily_start":datetime.utcnow().isoformat()})
+def save_simulator(s): _write_json(SIM_FILE, s)
+def load_deposits(): return _read_json(DEPOSITS_FILE, [])
+def save_deposits(d): _write_json(DEPOSITS_FILE, d)
+def load_withdrawals(): return _read_json(WITHDRAWALS_FILE, [])
+def save_withdrawals(w): _write_json(WITHDRAWALS_FILE, w)
+def load_mt5(): return _read_json(MT5_CONFIGS_FILE, {})
+def save_mt5(d): _write_json(MT5_CONFIGS_FILE, d)
+def load_protection():
+    return _read_json(PROTECTION_FILE, {
+        "active":True,"daily_pnl":0.0,"daily_trades":0,
+        "last_outcomes":[],"pause_until":None,"pause_reason":"",
+        "history":[],"last_day":datetime.utcnow().strftime("%Y-%m-%d")
     })
+def save_protection(p): _write_json(PROTECTION_FILE, p)
 
-
-def сохранить_симулятор(данные):
-    """Сохранение состояния симулятора"""
-    записать_json(SIMULATOR_FILE, данные)
-
-
-def загрузить_инсайты():
-    """Загрузка собранных инсайтов"""
-    return прочитать_json(INSIGHTS_FILE, [])
-
-
-def сохранить_инсайты(данные):
-    """Сохранение инсайтов"""
-    записать_json(INSIGHTS_FILE, данные)
-
-
-def загрузить_базу_знаний():
-    """Загрузка базы знаний"""
-    return прочитать_json(KNOWLEDGE_FILE, {
-        "выдержки": [],
-        "сводка": "",
-        "обновлено": None
-    })
-
-
-def сохранить_базу_знаний(данные):
-    """Сохранение базы знаний"""
-    записать_json(KNOWLEDGE_FILE, данные)
-
-
-def загрузить_pine_скрипты():
-    """Загрузка Pine Script индикаторов"""
-    return прочитать_json(PINE_SCRIPTS_FILE, [])
-
-
-def сохранить_pine_скрипты(данные):
-    """Сохранение Pine Script индикаторов"""
-    записать_json(PINE_SCRIPTS_FILE, данные)
-
-
-def загрузить_депозиты():
-    """Загрузка истории депозитов"""
-    return прочитать_json(DEPOSITS_FILE, [])
-
-
-def сохранить_депозиты(данные):
-    """Сохранение истории депозитов"""
-    записать_json(DEPOSITS_FILE, данные)
-
-
-def загрузить_выводы():
-    """Загрузка истории выводов"""
-    return прочитать_json(WITHDRAWALS_FILE, [])
-
-
-def сохранить_выводы(данные):
-    """Сохранение истории выводов"""
-    записать_json(WITHDRAWALS_FILE, данные)
-
-
-def загрузить_mt5():
-    """Загрузка конфигураций MT5"""
-    return прочитать_json(MT5_CONFIGS_FILE, {})
-
-
-def сохранить_mt5(данные):
-    """Сохранение конфигураций MT5"""
-    записать_json(MT5_CONFIGS_FILE, данные)
-
-
-def загрузить_защиту():
-    """
-    Загрузка состояния системы защиты.
-    
-    Возвращает словарь с полями:
-        - активна: bool (True/False)
-        - дневной_pnl: float (текущий P&L за день)
-        - сделок_за_день: int (количество сделок)
-        - последние_исходы: list (["win", "loss", ...])
-        - пауза_до: str или None (ISO время окончания паузы)
-        - причина_паузы: str
-        - история_срабатываний: list
-        - день_последний: str (YYYY-MM-DD)
-    """
-    значение_по_умолчанию = {
-        "активна": True,
-        "дневной_pnl": 0.0,
-        "сделок_за_день": 0,
-        "последние_исходы": [],
-        "пауза_до": None,
-        "причина_паузы": "",
-        "история_срабатываний": [],
-        "день_последний": datetime.utcnow().strftime("%Y-%m-%d")
-    }
-    return прочитать_json(PROTECTION_FILE, значение_по_умолчанию)
-
-
-def сохранить_защиту(данные):
-    """Сохранение состояния системы защиты"""
-    записать_json(PROTECTION_FILE, данные)
-
-
-def стандартные_правила():
-    """
-    Возвращает стандартный набор торговых правил.
-    Используется при первом запуске или сбросе.
-    """
-    return {
-        "создано": datetime.utcnow().isoformat() + "Z",
-        "рыночный_настрой": "медвежий",
-        "сила_настроя": 0.0,
-        "предпочитаемый_сигнал": "SELL",
-        "rsi_перепроданность": 30,
-        "rsi_перекупленность": 70,
-        "ценовая_цель": None,
-        "режим_риска": "нормальный",
-        "atr_осторожность": 50,
-        "порог_уверенности": CONFIDENCE_THRESHOLD,
-        "исторический_винрейт": None,
-        "основано_на": {
-            "записей_инсайтов": 0,
-            "размеченных_сделок": 0
-        }
-    }
-
+def default_rules():
+    return {"generated_at":datetime.utcnow().isoformat()+"Z","market_bias":"neutral","bias_strength":0,
+            "preferred_signal":"HOLD","rsi_oversold":30,"rsi_overbought":70,"price_target":None,
+            "risk_mode":"normal","atr_caution_above":50,"confidence_threshold":CONFIDENCE_THRESHOLD,
+            "historical_winrate":None,"based_on":{"insight_records":0,"labeled_trades":0}}
 
 # ══════════════════════════════════════════════════════════════════════════════
-# СИСТЕМА АВТОРИЗАЦИИ
+# АВТОРИЗАЦИЯ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def хешировать_пароль(пароль):
-    """
-    Хеширование пароля с использованием SHA-256.
-    
-    Аргументы:
-        пароль: str (исходный пароль)
-        
-    Возвращает:
-        str (64-символьный хеш)
-    """
-    return hashlib.sha256(пароль.encode("utf-8")).hexdigest()
+def hash_pw(pw): return hashlib.sha256(pw.encode()).hexdigest()
 
+def login_required(f):
+    @wraps(f)
+    def wrap(*a,**k):
+        if "user" not in session: return redirect("/login")
+        return f(*a,**k)
+    return wrap
 
-def вход_требуется(функция):
-    """
-    Декоратор для маршрутов, требующих авторизации.
-    Если пользователь не вошёл — перенаправляет на /login
-    
-    Использование:
-        @app.route("/dashboard")
-        @вход_требуется
-        def dashboard():
-            ...
-    """
-    @wraps(функция)
-    def обёртка(*аргументы, **ключевые_аргументы):
-        if "юзер" not in session:
-            logger.debug("Попытка доступа без авторизации")
-            return redirect("/login")
-        return функция(*аргументы, **ключевые_аргументы)
-    return обёртка
+def admin_required(f):
+    @wraps(f)
+    def wrap(*a,**k):
+        if "user" not in session: return redirect("/login")
+        if load_users().get(session["user"],{}).get("sub")!="admin": return "Access denied",403
+        return f(*a,**k)
+    return wrap
 
+def vip_required(f):
+    @wraps(f)
+    def wrap(*a,**k):
+        if "user" not in session: return redirect("/login")
+        if load_users().get(session["user"],{}).get("sub") not in ("vip","admin"): return "VIP required",403
+        return f(*a,**k)
+    return wrap
 
-def админ_требуется(функция):
-    """
-    Декоратор для маршрутов, требующих прав администратора.
-    
-    Использование:
-        @app.route("/admin")
-        @админ_требуется
-        def admin():
-            ...
-    """
-    @wraps(функция)
-    def обёртка(*аргументы, **ключевые_аргументы):
-        if "юзер" not in session:
-            return redirect("/login")
-        
-        пользователь = загрузить_пользователей().get(session["юзер"], {})
-        if пользователь.get("подписка") != "admin":
-            logger.warning(f"Попытка доступа к админке: {session['юзер']}")
-            return "Доступ запрещён. Требуются права администратора.", 403
-        
-        return функция(*аргументы, **ключевые_аргументы)
-    return обёртка
+def get_user():
+    if "user" not in session: return None
+    return load_users().get(session["user"])
 
-
-def вип_требуется(функция):
-    """
-    Декоратор для маршрутов, требующих VIP или Admin подписки.
-    
-    Использование:
-        @app.route("/vip-feature")
-        @вип_требуется
-        def vip_feature():
-            ...
-    """
-    @wraps(функция)
-    def обёртка(*аргументы, **ключевые_аргументы):
-        if "юзер" not in session:
-            return redirect("/login")
-        
-        пользователь = загрузить_пользователей().get(session["юзер"], {})
-        if пользователь.get("подписка") not in ("vip", "admin"):
-            return "Требуется VIP подписка. <a href='/subscription'>Оформить</a>", 403
-        
-        return функция(*аргументы, **ключевые_аргументы)
-    return обёртка
-
-
-def получить_текущего_пользователя():
-    """
-    Получение данных текущего авторизованного пользователя.
-    
-    Возвращает:
-        dict или None (если не авторизован)
-    """
-    if "юзер" not in session:
-        return None
-    
-    пользователи = загрузить_пользователей()
-    return пользователи.get(session["юзер"])
-
-
-def получить_тип_подписки():
-    """
-    Получение типа подписки текущего пользователя.
-    
-    Возвращает:
-        str: "free", "vip", или "admin"
-    """
-    пользователь = получить_текущего_пользователя()
-    if not пользователь:
-        return "free"
-    return пользователь.get("подписка", "free")
-
+def get_sub():
+    u = get_user()
+    return u.get("sub","free") if u else "free"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TELEGRAM API
 # ══════════════════════════════════════════════════════════════════════════════
 
-TELEGRAM_API_URL = "https://api.telegram.org/bot{токен}/{метод}"
+TG_API = "https://api.telegram.org/bot{token}/{method}"
 
-
-def телеграм_запрос(метод, данные, таймаут=10):
-    """
-    Отправка запроса к Telegram Bot API.
-    
-    Аргументы:
-        метод: str (sendMessage, answerCallbackQuery и т.д.)
-        данные: dict (параметры запроса)
-        таймаут: int (секунды ожидания)
-        
-    Возвращает:
-        dict: {"ok": bool, "данные": dict}
-    """
-    if not TELEGRAM_TOKEN:
-        logger.warning("TELEGRAM_TOKEN не задан")
-        return {"ok": False, "ошибка": "Токен не задан"}
-    
+def _tg(method, payload, timeout=10):
+    if not TELEGRAM_TOKEN: return {"ok":False}
     try:
-        url = TELEGRAM_API_URL.format(токен=TELEGRAM_TOKEN, метод=метод)
-        ответ = requests.post(url, json=данные, timeout=таймаут)
-        
-        if ответ.ok:
-            return {"ok": True, "данные": ответ.json()}
-        else:
-            logger.error(f"Telegram API ошибка: {ответ.status_code} {ответ.text}")
-            return {"ok": False, "ошибка": ответ.text}
-    
-    except requests.exceptions.Timeout:
-        logger.error(f"Telegram API таймаут ({таймаут}с)")
-        return {"ok": False, "ошибка": "Таймаут"}
-    except Exception as ошибка:
-        logger.error(f"Telegram API исключение: {ошибка}")
-        return {"ok": False, "ошибка": str(ошибка)}
+        r = requests.post(TG_API.format(token=TELEGRAM_TOKEN, method=method), json=payload, timeout=timeout)
+        return {"ok":r.ok, "data":r.json() if r.headers.get("content-type","").startswith("application/json") else {"raw":r.text}}
+    except: return {"ok":False}
 
+def tg_send(text, chat_id=None, reply_markup=None, parse_mode="Markdown"):
+    cid = chat_id or CHAT_IDS[0]
+    if not cid: return {"ok":False}
+    payload = {"chat_id":cid, "text":text, "parse_mode":parse_mode, "disable_web_page_preview":True}
+    if reply_markup: payload["reply_markup"] = reply_markup
+    result = _tg("sendMessage", payload)
+    for cid2 in CHAT_IDS[1:]:
+        payload["chat_id"] = cid2
+        _tg("sendMessage", payload)
+    return result
 
-def отправить_в_телеграм(текст, чат_id=None, клавиатура=None, разметка="Markdown"):
-    """
-    Отправка сообщения в Telegram (одному или всем чатам).
-    
-    Аргументы:
-        текст: str (текст сообщения)
-        чат_id: str или None (если None — отправляет всем ID из CHAT_IDS)
-        клавиатура: dict или None (inline keyboard)
-        разметка: str (Markdown или HTML)
-    """
-    if not TELEGRAM_TOKEN:
-        return
-    
-    if not CHAT_IDS:
-        logger.warning("CHAT_IDS пуст")
-        return
-    
-    # Определяем получателей
-    получатели = [чат_id] if чат_id else CHAT_IDS
-    
-    for чат in получатели:
-        if not чат:
-            continue
-        
-        данные = {
-            "chat_id": чат,
-            "text": текст,
-            "parse_mode": разметка,
-            "disable_web_page_preview": True
-        }
-        
-        if клавиатура:
-            данные["reply_markup"] = клавиатура
-        
-        результат = телеграм_запрос("sendMessage", данные)
-        
-        if not результат["ok"]:
-            logger.error(f"Не удалось отправить в Telegram (чат {чат})")
+def tg_send_all(text, reply_markup=None):
+    for cid in CHAT_IDS: tg_send(text, chat_id=cid, reply_markup=reply_markup)
 
+def tg_edit(chat_id, message_id, text, reply_markup=None):
+    payload = {"chat_id":chat_id,"message_id":message_id,"text":text,"parse_mode":"Markdown"}
+    if reply_markup: payload["reply_markup"] = reply_markup
+    return _tg("editMessageText", payload)
 
-def отправить_всем(текст, клавиатура=None):
-    """
-    Отправка сообщения всем зарегистрированным чатам.
-    
-    Аргументы:
-        текст: str
-        клавиатура: dict или None
-    """
-    отправить_в_телеграм(текст, клавиатура=клавиатура)
+def tg_answer_callback(cb_id, text=None):
+    payload = {"callback_query_id":cb_id}
+    if text: payload["text"] = text
+    return _tg("answerCallbackQuery", payload)
 
+def tg_set_webhook(url):
+    return _tg("setWebhook", {"url":url, "allowed_updates":["message","callback_query"]})
 
-def уведомить_администраторов(текст):
-    """
-    Отправка уведомления всем администраторам.
-    
-    Аргументы:
-        текст: str
-    """
-    for админ_id in ADMIN_TELEGRAM_IDS:
-        отправить_в_телеграм(текст, чат_id=админ_id)
-
+def notify_admins(text):
+    for cid in ADMIN_TELEGRAM_IDS: tg_send(text, chat_id=cid)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FINNHUB API — РЕАЛЬНЫЕ ДАННЫЕ РЫНКА
+# FINNHUB — ЦЕНА И НОВОСТИ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def получить_текущую_цену_xau():
-    """
-    Получение текущей цены XAUUSD через Finnhub API.
-    
-    Возвращает:
-        dict или None:
-            {
-                "текущая": float (текущая цена),
-                "открытие": float или None,
-                "максимум": float или None,
-                "минимум": float или None,
-                "изменение": float (абсолютное),
-                "изменение_процент": float (процентное)
+def get_current_price_finnhub():
+    if not FINNHUB_API_KEY: return None
+    try:
+        r = requests.get(f"https://finnhub.io/api/v1/quote?symbol=XAUUSD&token={FINNHUB_API_KEY}", timeout=10)
+        if r.status_code != 200: return None
+        data = r.json()
+        if data.get("c"):
+            return {
+                "current": data.get("c"),
+                "high": data.get("h"), "low": data.get("l"),
+                "open": data.get("o"), "prev_close": data.get("pc"),
+                "change": round(data.get("c",0)-data.get("pc",0),2) if data.get("pc") else None,
+                "change_percent": round((data.get("c",0)-data.get("pc",0))/data.get("pc",1)*100,2) if data.get("c") and data.get("pc") and data.get("pc")!=0 else None
             }
-    """
-    if not FINNHUB_API_KEY:
-        logger.warning("FINNHUB_API_KEY не задан")
         return None
-    
-    try:
-        url = f"https://finnhub.io/api/v1/quote?symbol=XAUUSD&token={FINNHUB_API_KEY}"
-        logger.debug(f"Запрос цены: {url}")
-        
-        ответ = requests.get(url, timeout=10)
-        
-        if ответ.status_code != 200:
-            logger.error(f"Finnhub вернул статус {ответ.status_code}")
-            return None
-        
-        данные = ответ.json()
-        logger.debug(f"Ответ Finnhub: {данные}")
-        
-        if not данные.get("c"):
-            logger.warning("Finnhub: поле 'c' отсутствует")
-            return None
-        
-        текущая = данные["c"]
-        предыдущая = данные.get("pc")
-        
-        изменение = round(текущая - предыдущая, 2) if предыдущая else 0
-        изменение_процент = round(изменение / предыдущая * 100, 2) if предыдущая and предыдущая != 0 else 0
-        
-        return {
-            "текущая": текущая,
-            "открытие": данные.get("o"),
-            "максимум": данные.get("h"),
-            "минимум": данные.get("l"),
-            "предыдущее_закрытие": предыдущая,
-            "изменение": изменение,
-            "изменение_процент": изменение_процент
-        }
-    
-    except requests.exceptions.Timeout:
-        logger.error("Finnhub: таймаут")
-        return None
-    except Exception as ошибка:
-        logger.error(f"Finnhub ошибка: {ошибка}")
+    except Exception as e:
+        logger.warning(f"[finnhub] Ошибка получения цены: {e}")
         return None
 
-
-def получить_новости():
-    """
-    Получение новостей через Finnhub API и проверка на высокую важность.
-    
-    Возвращает:
-        dict: {"высокое_влияние": bool, "новости": list}
-    """
-    if not FINNHUB_API_KEY:
-        return {"высокое_влияние": False, "новости": []}
-    
+def get_xau_price_reserve():
     try:
-        url = f"https://finnhub.io/api/v1/news?category=forex&token={FINNHUB_API_KEY}"
-        ответ = requests.get(url, timeout=10)
-        
-        if ответ.status_code != 200:
-            return {"высокое_влияние": False, "новости": []}
-        
-        все_новости = ответ.json()[:10]  # Берём первые 10
-        logger.debug(f"Получено {len(все_новости)} новостей")
-        
-        # Критические ключевые слова
-        критические_слова = [
-            "crisis", "crash", "war", "rate hike", "recession",
-            "default", "collapse", "panic", "emergency", "санкции",
-            "обвал", "кризис", "дефолт"
-        ]
-        
-        высокая_важность = False
-        for новость in все_новости:
-            заголовок = новость.get("headline", "")
-            описание = новость.get("summary", "")
-            полный_текст = (заголовок + " " + описание).lower()
-            
-            # Проверяем наличие критических слов
-            if any(слово in полный_текст for слово in критические_слова):
-                высокая_важность = True
-                logger.info(f"Обнаружена важная новость: {заголовок[:80]}")
-                break
-        
-        return {
-            "высокое_влияние": высокая_важность,
-            "новости": все_новости
-        }
-    
-    except Exception as ошибка:
-        logger.error(f"Ошибка получения новостей: {ошибка}")
-        return {"высокое_влияние": False, "новости": []}
+        r = requests.get("https://api.metals.live/v1/spot/gold", timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, list) and len(data) > 0: return float(data[0].get("price",0))
+        return None
+    except: return None
 
+def get_current_xau_price():
+    finnhub = get_current_price_finnhub()
+    if finnhub and finnhub.get("current"): return finnhub
+    reserve = get_xau_price_reserve()
+    if reserve: return {"current":reserve,"high":None,"low":None,"open":None,"prev_close":None,"change":None,"change_percent":None}
+    return None
+
+def get_news():
+    if not FINNHUB_API_KEY: return {"high_impact":False}
+    try:
+        r = requests.get(f"https://finnhub.io/api/v1/news?category=forex&token={FINNHUB_API_KEY}", timeout=10)
+        if r.status_code == 200:
+            news = r.json()[:10]
+            critical = ["crisis","crash","war","rate hike","recession","default","collapse","panic"]
+            hi = any(any(w in (n.get("headline","")+" "+n.get("summary","")).lower() for w in critical) for n in news)
+            return {"high_impact":hi}
+    except: pass
+    return {"high_impact":False}
+
+def finnhub_news():
+    if not FINNHUB_API_KEY: return []
+    try:
+        r = requests.get(f"https://finnhub.io/api/v1/news?category=forex&token={FINNHUB_API_KEY}", timeout=10)
+        if r.status_code != 200: return []
+        news = r.json()[:10]
+        records = []
+        for n in news:
+            text = (n.get("headline","") + " " + n.get("summary","")).lower()
+            records.append({
+                "query": f"finnhub:{n.get('headline','')[:80]}",
+                "fetched_at": datetime.utcnow().isoformat() + "Z",
+                "characters_extracted": len(text),
+                "analysis": {
+                    "bullish_hits": text.count("bull") + text.count("buy") + text.count("rise"),
+                    "bearish_hits": text.count("bear") + text.count("sell") + text.count("drop"),
+                    "risk_hits": text.count("risk") + text.count("volatile"),
+                    "rsi_mentions": [],
+                    "sample_snippets": [n.get("headline",""), n.get("summary","")[:200]]
+                }
+            })
+        return records
+    except Exception as e:
+        logger.warning(f"[finnhub] ошибка: {e}")
+        return []
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ТЕХНИЧЕСКИЕ ИНДИКАТОРЫ
+# ИНДИКАТОРЫ И 8 ПРАВИЛ ВХОДА
 # ══════════════════════════════════════════════════════════════════════════════
 
-def рассчитать_индикаторы():
-    """
-    Расчёт технических индикаторов.
-    В реальной версии здесь должен быть TA-Lib, пока используются случайные значения.
-    
-    Возвращает:
-        dict с полями: цена, atr, ema_разница, rsi, тренд, изменение, изменение_процент
-    """
-    цена_данные = получить_текущую_цену_xau()
-    
-    if цена_данные and цена_данные.get("текущая"):
-        цена = цена_данные["текущая"]
-        изменение = цена_данные.get("изменение", 0)
-        изменение_процент = цена_данные.get("изменение_процент", 0)
+def calculate_indicators():
+    price_data = get_current_xau_price()
+    if price_data and price_data.get("current"):
+        price = price_data["current"]
+        change = price_data.get("change", 0) or 0
     else:
-        # Fallback значения если API недоступен
-        цена = 4735.93
-        изменение = 0.55
-        изменение_процент = 0.01
-    
-    # Генерация случайных индикаторов для демонстрации
-    # В реальной версии здесь должны быть расчёты на основе исторических данных
-    atr = random.uniform(12, 22)          # ATR обычно в диапазоне 12-22
-    ema_разница = random.uniform(3, 5)    # Разница EMA20 и EMA50
-    rsi = random.uniform(45, 55)          # RSI около 50 (нейтрально)
-    
-    # Определение тренда
-    тренд = "UP" if изменение > 0 else "DOWN"
-    
+        price = 4735.93
+        change = 0.55
+    atr = random.uniform(12, 22)
+    ema_diff = random.uniform(3, 5)
+    rsi = random.uniform(45, 55)
+    trend = "UP" if change > 0 else "DOWN"
     return {
-        "цена": round(цена, 2),
-        "atr": round(atr, 2),
-        "ema_разница": round(ema_разница, 2),
-        "rsi": round(rsi, 1),
-        "тренд": тренд,
-        "изменение": изменение,
-        "изменение_процент": изменение_процент
+        "price": round(price, 2), "atr": round(atr, 2),
+        "ema_diff": round(ema_diff, 2), "rsi": round(rsi, 1),
+        "trend": trend, "change": change
     }
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 8 ПРАВИЛ ВХОДА
-# ══════════════════════════════════════════════════════════════════════════════
-
-def проверить_8_правил(индикаторы, новости, направление):
+def check_8_rules(indicators, news, direction):
     """
-    Проверка 8 правил входа в рынок.
-    
-    Правила:
-        1. ATR в диапазоне $10-25
-        2. H4 и H1 в одну сторону (тренд UP или DOWN)
-        3. Цена близко к EMA20 (разница < $6.5)
-        4. RSI >48 для BUY, <52 для SELL
-        5. Нет новостей высокого влияния
-        6. Не первые 30 минут торговой сессии
-        7. Уверенность ИИ >70%
-        8. Риск ≤7% от депозита $200
-    
-    Аргументы:
-        индикаторы: dict с текущими значениями индикаторов
-        новости: dict с информацией о новостях
-        направление: str ("BUY" или "SELL")
-        
-    Возвращает:
-        dict: {
-            "решение": bool,
-            "правила": dict (результат каждого правила),
-            "выполнено": int (сколько правил выполнено),
-            "гибкий_вход": bool (использовано гибкое правило)
-        }
+    8 ПРАВИЛ ВХОДА:
+    1. ATR $10-25
+    2. H4 и H1 в одну сторону (тренд UP/DOWN)
+    3. До EMA20 < $6.5
+    4. RSI >48 для BUY, <52 для SELL
+    5. Без новостей высокого влияния
+    6. Не первые 30 минут
+    7. ИИ уверенность >70%
+    8. Риск ≤7% от $200
+
+    ГИБКОСТЬ: если RSI не совпал, но остальные 7 правил выполнены — вход разрешён
     """
-    сейчас = datetime.utcnow()
-    минуты_с_начала_сессии = сейчас.minute + сейчас.hour * 60
-    
-    правила = {}
-    
-    # Правило 1: ATR в диапазоне $10-25
-    atr = индикаторы.get("atr", 0)
-    правила["atr_в_диапазоне"] = ATR_MIN <= atr <= ATR_MAX
-    
-    # Правило 2: Тренд определён (H4 и H1 в одну сторону)
-    тренд = индикаторы.get("тренд", "")
-    правила["тренд_определён"] = тренд in ("UP", "DOWN")
-    
-    # Правило 3: EMA разница < $6.5
-    ema_разница = индикаторы.get("ema_разница", 100)
-    правила["ema_близко"] = ema_разница < EMA_MAX_DIFF
-    
-    # Правило 4: RSI для соответствующего направления
-    rsi = индикаторы.get("rsi", 50)
-    if направление == "BUY":
-        правила["rsi_корректен"] = rsi > RSI_BUY_MIN
+    now = datetime.utcnow()
+    session_minutes = now.minute + now.hour * 60
+
+    rules = {}
+    rules["atr_ok"] = ATR_MIN <= indicators.get("atr", 0) <= ATR_MAX
+    rules["trend_ok"] = indicators.get("trend", "") in ("UP", "DOWN")
+    rules["ema_ok"] = indicators.get("ema_diff", 100) < EMA_MAX_DIFF
+
+    rsi = indicators.get("rsi", 50)
+    if direction == "BUY":
+        rules["rsi_ok"] = rsi > RSI_BUY_MIN
     else:
-        правила["rsi_корректен"] = rsi < RSI_SELL_MAX
-    
-    # Правило 5: Нет новостей высокого влияния
-    правила["нет_важных_новостей"] = not новости.get("высокое_влияние", False)
-    
-    # Правило 6: Не первые 30 минут сессии
-    правила["не_первые_30_минут"] = минуты_с_начала_сессии > SESSION_START_MINUTES
-    
-    # Правило 7: ИИ уверенность >70%
-    уверенность_ии = индикаторы.get("уверенность_ии", 0)
-    правила["уверенность_ии_достаточна"] = уверенность_ии > CONFIDENCE_THRESHOLD
-    
-    # Правило 8: Риск приемлем (≤7% от $200 = $14)
-    правила["риск_приемлем"] = True  # Всегда True при lot=0.02
-    
-    # Подсчёт выполненных правил
-    выполнено = sum(1 for значение in правила.values() if значение)
-    все_выполнены = выполнено == 8
-    
-    # Гибкое правило: если RSI не совпал, но остальные 7 правил выполнены
-    правила_без_rsi = {
-        ключ: значение
-        for ключ, значение in правила.items()
-        if ключ != "rsi_корректен"
-    }
-    все_без_rsi_выполнены = all(правила_без_rsi.values())
-    
-    гибкий_вход = False
-    if not правила.get("rsi_корректен", False) and все_без_rsi_выполнены:
-        гибкий_вход = True
-        logger.info("⚠️ Гибкий вход: RSI не совпал, но остальные 7 правил выполнены")
-    
-    окончательное_решение = все_выполнены or гибкий_вход
-    
-    logger.debug(
-        f"Проверка 8 правил ({направление}): "
-        f"выполнено {выполнено}/8, "
-        f"решение={'ВХОД' if окончательное_решение else 'НЕТ'}"
-    )
-    
-    return {
-        "решение": окончательное_решение,
-        "правила": правила,
-        "выполнено": выполнено,
-        "гибкий_вход": гибкий_вход,
-        "все_выполнены": все_выполнены
-    }
+        rules["rsi_ok"] = rsi < RSI_SELL_MAX
 
+    rules["news_ok"] = not news.get("high_impact", False)
+    rules["time_ok"] = session_minutes > SESSION_START_MINUTES
+    rules["confidence_ok"] = indicators.get("ai_confidence", 0) > CONFIDENCE_THRESHOLD
+    rules["risk_ok"] = True
+
+    passed = sum(1 for v in rules.values() if v)
+    all_passed = passed == 8
+
+    # Гибкость: RSI не совпал, но остальные 7 правил выполнены
+    rules_without_rsi = {k: v for k, v in rules.items() if k != "rsi_ok"}
+    all_without_rsi = all(rules_without_rsi.values())
+    flexible_entry = False
+    if not rules.get("rsi_ok", False) and all_without_rsi:
+        flexible_entry = True
+        logger.info("Гибкий вход: RSI не совпал, но остальные 7 правил выполнены")
+
+    decision = all_passed or flexible_entry
+
+    return {
+        "decision": decision,
+        "rules": rules,
+        "passed": passed,
+        "flexible": flexible_entry,
+        "all_passed": all_passed
+    }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ИИ-ДВИЖОК — НОРМАЛИЗАЦИЯ И РАСЧЁТ УВЕРЕННОСТИ
+# ИИ-ДВИЖОК
 # ══════════════════════════════════════════════════════════════════════════════
 
-def нормализовать_сигнал(сигнал):
-    """
-    Преобразование текстового сигнала в числовое значение от 0 до 1.
-    
-    BUY/LONG → 1.0 (полностью бычий)
-    SELL/SHORT → 0.0 (полностью медвежий)
-    HOLD/NEUTRAL → 0.5 (нейтральный)
-    """
-    карта_сигналов = {
-        "BUY": 1.0,
-        "LONG": 1.0,
-        "STRONG_BUY": 1.0,
-        "SELL": 0.0,
-        "SHORT": 0.0,
-        "STRONG_SELL": 0.0,
-        "HOLD": 0.5,
-        "NEUTRAL": 0.5
-    }
-    return карта_сигналов.get(str(сигнал).strip().upper(), 0.5)
+def normalize_signal(s):
+    s = str(s).strip().upper()
+    return {"BUY":1.0,"LONG":1.0,"STRONG_BUY":1.0,"SELL":0.0,"SHORT":0.0,"STRONG_SELL":0.0,"HOLD":0.5,"NEUTRAL":0.5}.get(s,0.5)
 
+def normalize_trend(t):
+    t = str(t).strip().upper()
+    return {"UP":1.0,"BULL":1.0,"BULLISH":1.0,"DOWN":0.0,"BEAR":0.0,"BEARISH":0.0,"FLAT":0.5,"SIDEWAYS":0.5}.get(t,0.5)
 
-def нормализовать_тренд(тренд):
-    """
-    Преобразование текстового тренда в числовое значение от 0 до 1.
-    
-    UP/BULL → 1.0
-    DOWN/BEAR → 0.0
-    FLAT/SIDEWAYS → 0.5
-    """
-    карта_трендов = {
-        "UP": 1.0,
-        "BULL": 1.0,
-        "BULLISH": 1.0,
-        "DOWN": 0.0,
-        "BEAR": 0.0,
-        "BEARISH": 0.0,
-        "FLAT": 0.5,
-        "SIDEWAYS": 0.5
-    }
-    return карта_трендов.get(str(тренд).strip().upper(), 0.5)
+def normalize_features(signal, price, rsi, trend, atr):
+    sig = normalize_signal(signal)
+    try: price_score = 1.0/(1.0+math.exp(-float(price)/1000.0))
+    except: price_score = 0.5
+    try: rsi_v = max(0,min(100,float(rsi)))
+    except: rsi_v = 50
+    rsi_score = max(0,(50-rsi_v)/50) if sig>=0.5 else max(0,(rsi_v-50)/50)
+    rsi_score = max(0,min(1,rsi_score+0.2))
+    tr = normalize_trend(trend)
+    trend_score = tr if sig>=0.5 else 1-tr
+    try: atr_v = float(atr)
+    except: atr_v = 0
+    atr_score = max(0,min(1,1-(atr_v/100)))
+    return {"signal":sig,"price":price_score,"rsi":rsi_score,"trend":trend_score,"atr":atr_score}
 
+def compute_confidence(features, weights):
+    total = sum(weights.values()) or 1
+    return round(max(0,min(1,sum(features[k]*weights[k] for k in weights)/total)),4)
 
-def нормализовать_признаки(сигнал, цена, rsi, тренд, atr):
-    """
-    Нормализация всех признаков для подачи в ИИ.
-    Все значения приводятся к диапазону [0, 1].
-    
-    Аргументы:
-        сигнал: str (BUY/SELL/HOLD)
-        цена: float (текущая цена)
-        rsi: float (индикатор RSI)
-        тренд: str (UP/DOWN/FLAT)
-        atr: float (индикатор ATR)
-        
-    Возвращает:
-        dict: {
-            "сигнал": float [0-1],
-            "цена": float [0-1],
-            "rsi": float [0-1],
-            "тренд": float [0-1],
-            "atr": float [0-1]
-        }
-    """
-    # Нормализация сигнала
-    сигнал_норм = нормализовать_сигнал(сигнал)
-    
-    # Нормализация цены (сигмоидная функция)
+def apply_rules(base_conf, raw_input, rules):
+    reasons = []
+    conf = base_conf
+    threshold = float(rules.get("confidence_threshold", CONFIDENCE_THRESHOLD))
+    sig_str = str(raw_input.get("signal","")).strip().upper()
+    preferred = str(rules.get("preferred_signal","HOLD")).upper()
+    bias_strength = float(rules.get("bias_strength",0))
+
+    if preferred in ("BUY","SELL") and sig_str:
+        if sig_str == preferred:
+            conf = min(1,conf+0.1*bias_strength)
+            reasons.append(f"Сигнал совпадает с {preferred}-предпочтением (+{0.1*bias_strength:.3f})")
+        elif sig_str in ("BUY","SELL"):
+            conf = max(0,conf-0.1*bias_strength)
+            reasons.append(f"Сигнал против {preferred}-предпочтения (−{0.1*bias_strength:.3f})")
+
     try:
-        цена_норм = 1.0 / (1.0 + math.exp(-float(цена) / 1000.0))
-    except (ValueError, TypeError):
-        цена_норм = 0.5
-    
-    # Нормализация RSI
+        rsi_v = float(raw_input.get("rsi"))
+        oversold = float(rules.get("rsi_oversold",30))
+        overbought = float(rules.get("rsi_overbought",70))
+        if sig_str=="BUY" and rsi_v<=oversold: conf=min(1,conf+0.05); reasons.append(f"RSI {rsi_v} ≤ перепроданность (+0.05)")
+        elif sig_str=="SELL" and rsi_v>=overbought: conf=min(1,conf+0.05); reasons.append(f"RSI {rsi_v} ≥ перекупленность (+0.05)")
+    except: pass
+
     try:
-        rsi_значение = max(0, min(100, float(rsi)))
-    except (ValueError, TypeError):
-        rsi_значение = 50
-    
-    if сигнал_норм >= 0.5:
-        # Для BUY: низкий RSI = хорошо
-        rsi_норм = max(0, (50 - rsi_значение) / 50)
-    else:
-        # Для SELL: высокий RSI = хорошо
-        rsi_норм = max(0, (rsi_значение - 50) / 50)
-    
-    rsi_норм = max(0, min(1, rsi_норм + 0.2))  # Небольшой бонус
-    
-    # Нормализация тренда
-    тренд_норм = нормализовать_тренд(тренд)
-    # Если сигнал BUY — тренд UP это хорошо, если SELL — тренд DOWN это хорошо
-    тренд_скор = тренд_норм if сигнал_норм >= 0.5 else 1 - тренд_норм
-    
-    # Нормализация ATR
-    try:
-        atr_значение = float(atr)
-        atr_норм = max(0, min(1, 1 - (atr_значение / 100)))
-    except (ValueError, TypeError):
-        atr_норм = 0.5
-    
-    return {
-        "сигнал": сигнал_норм,
-        "цена": цена_норм,
-        "rsi": rsi_норм,
-        "тренд": тренд_скор,
-        "atr": atr_норм
-    }
+        atr_v = float(raw_input.get("atr"))
+        atr_cap = float(rules.get("atr_caution_above",50))
+        if atr_v > atr_cap: conf = max(0,conf-min(0.15,(atr_v-atr_cap)/200)); reasons.append(f"ATR {atr_v} выше порога (−{min(0.15,(atr_v-atr_cap)/200):.3f})")
+    except: pass
 
+    if rules.get("risk_mode")=="elevated": threshold=min(0.95,threshold+0.05); reasons.append("Высокий риск: порог поднят (+0.05)")
 
-def рассчитать_уверенность(признаки, веса):
-    """
-    Расчёт взвешенной уверенности ИИ.
-    
-    Аргументы:
-        признаки: dict с нормализованными признаками
-        веса: dict с весами каждого признака
-        
-    Возвращает:
-        float: уверенность от 0 до 1
-    """
-    сумма_весов = sum(веса.values()) or 1
-    уверенность = sum(признаки[ключ] * веса[ключ] for ключ in веса) / сумма_весов
-    return round(max(0, min(1, уверенность)), 4)
+    prot = load_protection()
+    if prot["daily_pnl"] < -7.0: threshold = max(threshold, MIN_CONFIDENCE_AFTER_LOSS); reasons.append(f"Защита: порог {int(threshold*100)}%")
 
-
-def применить_рыночные_правила(базовая_уверенность, входные_данные, правила_рынка):
-    """
-    Корректировка уверенности на основе рыночных правил.
-    
-    Учитывает:
-        - Рыночный настрой (bullish/bearish)
-        - Положение RSI (перекупленность/перепроданность)
-        - Режим риска
-        - Состояние защиты
-        
-    Аргументы:
-        базовая_уверенность: float
-        входные_данные: dict
-        правила_рынка: dict
-        
-    Возвращает:
-        tuple: (скорректированная_уверенность, причины, порог)
-    """
-    причины = []
-    уверенность = базовая_уверенность
-    порог = float(правила_рынка.get("порог_уверенности", CONFIDENCE_THRESHOLD))
-    
-    сигнал = str(входные_данные.get("сигнал", "")).strip().upper()
-    предпочитаемый = str(правила_рынка.get("предпочитаемый_сигнал", "HOLD")).upper()
-    сила_настроя = float(правила_рынка.get("сила_настроя", 0))
-    
-    # Корректировка по рыночному настрою
-    if предпочитаемый in ("BUY", "SELL") and сигнал in ("BUY", "SELL"):
-        if сигнал == предпочитаемый:
-            бонус = 0.1 * сила_настроя
-            уверенность = min(1, уверенность + бонус)
-            причины.append(f"Сигнал совпадает с настроем рынка (+{бонус:.3f})")
-        else:
-            штраф = 0.1 * сила_настроя
-            уверенность = max(0, уверенность - штраф)
-            причины.append(f"Сигнал против настроя рынка (-{штраф:.3f})")
-    
-    # Корректировка по RSI
-    try:
-        rsi_значение = float(входные_данные.get("rsi", 50))
-        перепроданность = float(правила_рынка.get("rsi_перепроданность", 30))
-        перекупленность = float(правила_рынка.get("rsi_перекупленность", 70))
-        
-        if сигнал == "BUY" and rsi_значение <= перепроданность:
-            уверенность = min(1, уверенность + 0.05)
-            причины.append(f"RSI {rsi_значение} — перепроданность (+0.05)")
-        elif сигнал == "SELL" and rsi_значение >= перекупленность:
-            уверенность = min(1, уверенность + 0.05)
-            причины.append(f"RSI {rsi_значение} — перекупленность (+0.05)")
-    except (ValueError, TypeError):
-        pass
-    
-    # Повышенный порог при убытках
-    защита = загрузить_защиту()
-    if защита["дневной_pnl"] < -7.0:
-        порог = max(порог, MIN_CONFIDENCE_AFTER_LOSS)
-        причины.append(f"Защита: порог повышен до {int(порог*100)}%")
-    
-    return round(max(0, min(1, уверенность)), 4), причины, round(порог, 4)
-
+    return round(max(0,min(1,conf)),4), reasons, round(threshold,4)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ГЕНЕТИЧЕСКИЙ АЛГОРИТМ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def фитнес_функция(веса, сделки):
-    """
-    Оценка качества набора весов.
-    Сравнивает прогнозы с реальными исходами сделок.
-    
-    Аргументы:
-        веса: dict (веса признаков)
-        сделки: list (размеченные сделки)
-        
-    Возвращает:
-        float: точность от 0 до 1
-    """
-    оценено = 0
-    правильно = 0
-    
-    for сделка in сделки:
-        # Пропускаем неразмеченные сделки
-        исход = сделка.get("исход")
-        if исход not in ("win", "loss"):
-            continue
-        
-        # Пропускаем сделки без признаков
-        признаки = сделка.get("признаки")
-        if not признаки:
-            continue
-        
-        # Прогноз: уверенность >= порога = сигнал на вход
-        прогноз = рассчитать_уверенность(признаки, веса) >= CONFIDENCE_THRESHOLD
-        
-        # Правильно ли предсказали?
-        if прогноз == (исход == "win"):
-            правильно += 1
-        
-        оценено += 1
-    
-    return правильно / оценено if оценено > 0 else 0
+def fitness(weights, trades):
+    scored=correct=0
+    for t in trades:
+        if t.get("outcome") not in ("win","loss"): continue
+        feats=t.get("features")
+        if not feats: continue
+        if (compute_confidence(feats,weights)>=CONFIDENCE_THRESHOLD)==(t["outcome"]=="win"): correct+=1
+        scored+=1
+    return correct/scored if scored else 0
 
+def random_weights():
+    raw={k:random.random() for k in DEFAULT_WEIGHTS}
+    s=sum(raw.values()) or 1
+    return {k:v/s for k,v in raw.items()}
 
-def случайные_веса():
-    """Генерация случайного набора весов (сумма = 1)"""
-    сырые_веса = {ключ: random.random() for ключ in DEFAULT_WEIGHTS}
-    сумма = sum(сырые_веса.values()) or 1
-    return {ключ: значение / сумма for ключ, значение in сырые_веса.items()}
+def crossover(a,b):
+    child={k:(a[k]+b[k])/2 for k in a}
+    s=sum(child.values()) or 1
+    return {k:v/s for k,v in child.items()}
 
+def mutate(w):
+    out={}
+    for k,v in w.items(): out[k]=max(0.01,v+random.uniform(-0.15,0.15)) if random.random()<GA_MUTATION_RATE else v
+    s=sum(out.values()) or 1
+    return {k:v/s for k,v in out.items()}
 
-def скрестить_веса(веса_а, веса_б):
-    """Скрещивание двух наборов весов (среднее арифметическое)"""
-    потомок = {ключ: (веса_а[ключ] + веса_б[ключ]) / 2 for ключ in веса_а}
-    сумма = sum(потомок.values()) or 1
-    return {ключ: значение / сумма for ключ, значение in потомок.items()}
+def evolve_weights(current, trades):
+    labeled=[t for t in trades if t.get("outcome") in ("win","loss") and t.get("features")]
+    if len(labeled)<2: return current,None
+    pop=[current]+[random_weights() for _ in range(GA_POPULATION-1)]
+    best,best_fit=current,fitness(current,labeled)
+    for _ in range(GA_GENERATIONS):
+        scored=sorted(((fitness(w,labeled),w) for w in pop),key=lambda x:x[0],reverse=True)
+        if scored[0][0]>best_fit: best_fit,best=scored[0]
+        elites=[w for _,w in scored[:max(2,GA_POPULATION//4)]]
+        new_pop=list(elites)
+        while len(new_pop)<GA_POPULATION:
+            a,b=random.sample(elites,2)
+            new_pop.append(mutate(crossover(a,b)))
+        pop=new_pop
+    return best,best_fit
 
-
-def мутировать_веса(веса):
-    """
-    Мутация набора весов с заданной вероятностью.
-    Каждый вес может измениться на ±0.15.
-    """
-    результат = {}
-    for ключ, значение in веса.items():
-        if random.random() < GA_MUTATION_RATE:
-            # Мутация: добавляем случайное изменение
-            результат[ключ] = max(0.01, значение + random.uniform(-0.15, 0.15))
-        else:
-            результат[ключ] = значение
-    
-    # Нормализация (сумма должна быть = 1)
-    сумма = sum(результат.values()) or 1
-    return {ключ: значение / сумма for ключ, значение in результат.items()}
-
-
-def эволюция_весов(текущие_веса, сделки):
-    """
-    Запуск генетического алгоритма для оптимизации весов.
-    
-    Процесс:
-        1. Создаётся популяция весов
-        2. На каждом поколении отбираются лучшие
-        3. Производится скрещивание и мутация
-        4. Лучший набор весов сохраняется
-        
-    Аргументы:
-        текущие_веса: dict
-        сделки: list
-        
-    Возвращает:
-        tuple: (лучшие_веса, фитнес)
-    """
-    # Отбираем только размеченные сделки с признаками
-    размеченные = [
-        т for т in сделки
-        if т.get("исход") in ("win", "loss") and т.get("признаки")
-    ]
-    
-    if len(размеченные) < 2:
-        logger.debug("Недостаточно размеченных сделок для генетики")
-        return текущие_веса, None
-    
-    # Создаём популяцию
-    популяция = [текущие_веса] + [случайные_веса() for _ in range(GA_POPULATION - 1)]
-    
-    лучшие_веса = текущие_веса
-    лучший_фитнес = фитнес_функция(текущие_веса, размеченные)
-    
-    logger.info(f"[Генетика] Старт. Начальный фитнес: {лучший_фитнес:.3f}")
-    
-    for поколение in range(GA_GENERATIONS):
-        # Оцениваем популяцию
-        оценённые = sorted(
-            [(фитнес_функция(в, размеченные), в) for в in популяция],
-            key=lambda x: x[0],
-            reverse=True
-        )
-        
-        # Обновляем лучший результат
-        if оценённые[0][0] > лучший_фитнес:
-            лучший_фитнес = оценённые[0][0]
-            лучшие_веса = оценённые[0][1]
-            logger.debug(f"[Генетика] Поколение {поколение+1}: фитнес = {лучший_фитнес:.3f}")
-        
-        # Отбираем элиту (топ 25%)
-        размер_элиты = max(2, GA_POPULATION // 4)
-        элита = [веса for _, веса in оценённые[:размер_элиты]]
-        
-        # Создаём новое поколение
-        новая_популяция = list(элита)
-        
-        while len(новая_популяция) < GA_POPULATION:
-            родитель_а, родитель_б = random.sample(элита, 2)
-            потомок = скрестить_веса(родитель_а, родитель_б)
-            потомок = мутировать_веса(потомок)
-            новая_популяция.append(потомок)
-        
-        популяция = новая_популяция
-    
-    logger.info(f"[Генетика] Завершена. Итоговый фитнес: {лучший_фитнес:.3f}")
-    
-    return лучшие_веса, лучший_фитнес
-
-
-def запустить_генетику_если_пора(сделки, веса):
-    """
-    Проверка условий для запуска генетического алгоритма.
-    Запускается каждые GA_INTERVAL размеченных сделок.
-    """
-    размеченные = [т for т in сделки if т.get("исход") in ("win", "loss")]
-    
-    if len(размеченные) == 0:
-        return веса, None
-    
-    if len(размеченные) % GA_INTERVAL != 0:
-        return веса, None
-    
-    logger.info(f"[Генетика] Условие выполнено ({len(размеченные)} сделок)")
-    новые_веса, фитнес = эволюция_весов(веса, сделки)
-    сохранить_веса(новые_веса)
-    
-    return новые_веса, фитнес
-
+def maybe_run_ga(trades,weights):
+    labeled=[t for t in trades if t.get("outcome") in ("win","loss")]
+    if len(labeled)==0 or len(labeled)%GA_INTERVAL!=0: return weights,None
+    new_w,fit=evolve_weights(weights,trades)
+    save_weights(new_w)
+    logger.info(f"[GA] эволюция весов: фитнес={fit}")
+    return new_w,fit
 
 # ══════════════════════════════════════════════════════════════════════════════
-# СИСТЕМА ЗАЩИТЫ ОТ УБЫТКОВ
+# ЗАЩИТА
 # ══════════════════════════════════════════════════════════════════════════════
 
-def сбросить_ежедневную_защиту():
-    """Сброс всех дневных счётчиков (вызывается в полночь)"""
-    защита = {
-        "активна": True,
-        "дневной_pnl": 0.0,
-        "сделок_за_день": 0,
-        "последние_исходы": [],
-        "пауза_до": None,
-        "причина_паузы": "",
-        "история_срабатываний": загрузить_защиту().get("история_срабатываний", []),
-        "день_последний": datetime.utcnow().strftime("%Y-%m-%d")
-    }
-    сохранить_защиту(защита)
-    logger.info("[ЗАЩИТА] Новый день — счётчики сброшены")
-
-
-def проверить_все_защиты():
-    """
-    Комплексная проверка всех условий защиты.
-    
-    Проверяет:
-        1. Активна ли пауза (если да — когда закончится)
-        2. Не превышен ли дневной лимит сделок (5)
-        3. Не превышен ли лимит убытка ($15)
-        4. Не достигнута ли цель по прибыли ($18)
-        5. Нет ли 3 убытков подряд
-        6. Нет ли 3/5 прибыльных (стоп при успехе)
-        
-    Возвращает:
-        tuple: (разрешено: bool, причина: str)
-    """
-    защита = загрузить_защиту()
-    сейчас = datetime.utcnow()
-    
-    # Проверка смены дня
-    сегодня = сейчас.strftime("%Y-%m-%d")
-    if защита.get("день_последний") != сегодня:
-        сбросить_ежедневную_защиту()
-        защита = загрузить_защиту()
-    
-    # 1. Проверка активной паузы
-    if защита.get("пауза_до"):
-        try:
-            пауза_до = datetime.fromisoformat(защита["пауза_до"])
-            if сейчас < пауза_до:
-                осталось_минут = int((пауза_до - сейчас).total_seconds() / 60)
-                return False, (
-                    f"⏸️ Торговля приостановлена\n"
-                    f"Причина: {защита['причина_паузы']}\n"
-                    f"До возобновления: {осталось_минут} мин"
-                )
-            else:
-                # Пауза закончилась — снимаем
-                защита["пауза_до"] = None
-                защита["причина_паузы"] = ""
-                сохранить_защиту(защита)
-                logger.info("[ЗАЩИТА] Пауза снята автоматически")
-        except (ValueError, TypeError):
-            защита["пауза_до"] = None
-            сохранить_защиту(защита)
-    
-    # 2. Лимит сделок в день
-    if защита["сделок_за_день"] >= MAX_DAILY_TRADES:
-        return False, f"📊 Дневной лимит сделок исчерпан ({MAX_DAILY_TRADES}/день)"
-    
-    # 3. Лимит убытка
-    if защита["дневной_pnl"] <= -MAX_DAILY_LOSS:
-        return False, (
-            f"🛑 Дневной убыток -${abs(защита['дневной_pnl']):.2f} "
-            f"превысил лимит ${MAX_DAILY_LOSS}"
-        )
-    
-    # 4. Цель по прибыли
-    if защита["дневной_pnl"] >= MAX_DAILY_PROFIT:
-        return False, (
-            f"🎯 Дневная прибыль +${защита['дневной_pnl']:.2f} "
-            f"достигла цели ${MAX_DAILY_PROFIT}"
-        )
-    
-    # 5. Последовательные убытки
-    последние = защита["последние_исходы"][-CONSECUTIVE_LOSS_STOP:]
-    if len(последние) >= CONSECUTIVE_LOSS_STOP and all(s == "loss" for s in последние):
-        return False, f"❌ {CONSECUTIVE_LOSS_STOP} убыточных сделок подряд"
-    
-    # 6. Успешная серия (3/5 прибыльных)
-    if len(защита["последние_исходы"]) >= 5:
-        последние_5 = защита["последние_исходы"][-5:]
-        прибыльных = sum(1 for s in последние_5 if s == "win")
-        if прибыльных >= STOP_AFTER_PROFITABLE:
-            return False, f"🏆 Достигнуто {прибыльных}/5 прибыльных сделок"
-    
-    return True, "✅ Торговля разрешена"
-
-
-def активировать_паузу_торговли(причина):
-    """
-    Активация принудительной паузы в торговле.
-    
-    Аргументы:
-        причина: str (описание причины остановки)
-    """
-    защита = загрузить_защиту()
-    сейчас = datetime.utcnow()
-    
-    защита["пауза_до"] = (сейчас + timedelta(minutes=COOLDOWN_MINUTES)).isoformat()
-    защита["причина_паузы"] = причина
-    защита["история_срабатываний"].append({
-        "время": сейчас.isoformat(),
-        "причина": причина,
-        "pnl": защита["дневной_pnl"],
-        "сделок": защита["сделок_за_день"]
+def reset_protection():
+    save_protection({
+        "active":True,"daily_pnl":0.0,"daily_trades":0,
+        "last_outcomes":[],"pause_until":None,"pause_reason":"",
+        "history":load_protection().get("history",[]),
+        "last_day":datetime.utcnow().strftime("%Y-%m-%d")
     })
-    
-    сохранить_защиту(защита)
-    
-    logger.warning(f"[ЗАЩИТА] Активирована пауза: {причина}")
-    
-    # Уведомляем всех в Telegram
-    время_возобновления = (сейчас + timedelta(minutes=COOLDOWN_MINUTES)).strftime("%H:%M")
-    отправить_всем(
-        f"🛑 *ТОРГОВЛЯ ПРИОСТАНОВЛЕНА*\n\n"
-        f"*Причина:* {причина}\n"
-        f"*Дневной P&L:* ${защита['дневной_pnl']:.2f}\n"
-        f"*Сделок сегодня:* {защита['сделок_за_день']}/{MAX_DAILY_TRADES}\n"
-        f"*Пауза:* {COOLDOWN_MINUTES} минут\n"
-        f"*Возобновление:* {время_возобновления} МСК"
-    )
 
-
-def зарегистрировать_сделку_в_защите(исход, прибыль_доллары=None):
-    """
-    Регистрация исхода сделки в системе защиты.
-    Автоматически проверяет все условия и при необходимости
-    активирует паузу.
-    
-    Аргументы:
-        исход: str ("win" или "loss")
-        прибыль_доллары: float или None (точная сумма P&L)
-    """
-    защита = загрузить_защиту()
-    
-    # Обновляем счётчики
-    защита["сделок_за_день"] += 1
-    
-    if прибыль_доллары is not None:
-        защита["дневной_pnl"] += прибыль_доллары
-    elif исход == "loss":
-        защита["дневной_pnl"] -= 14.0  # Примерный убыток (7% от $200)
-    elif исход == "win":
-        защита["дневной_pnl"] += 21.0  # Примерная прибыль (1.5 × риск)
-    
-    # Обновляем историю исходов
-    защита["последние_исходы"].append(исход)
-    if len(защита["последние_исходы"]) > 10:
-        защита["последние_исходы"] = защита["последние_исходы"][-10:]
-    
-    сохранить_защиту(защита)
-    
-    logger.info(
-        f"[ЗАЩИТА] Сделка {исход} | "
-        f"P&L дня: ${защита['дневной_pnl']:.2f} | "
-        f"Сделок: {защита['сделок_за_день']}/{MAX_DAILY_TRADES}"
-    )
-    
-    # Проверяем необходимость паузы
-    разрешено, причина = проверить_все_защиты()
-    if not разрешено:
-        активировать_паузу_торговли(причина)
-
-
-def получить_статус_защиты():
-    """
-    Получение полного статуса системы защиты для отображения.
-    
-    Возвращает:
-        dict с подробной информацией о состоянии защиты
-    """
-    защита = загрузить_защиту()
-    разрешено, причина = проверить_все_защиты()
-    сейчас = datetime.utcnow()
-    
-    # Подсчёт прибыльных из последних 5
-    последние_5 = защита["последние_исходы"][-5:]
-    прибыльных_из_5 = sum(1 for s in последние_5 if s == "win")
-    
-    статус = {
-        "торговля_разрешена": разрешено,
-        "причина_блокировки": причина if not разрешено else "",
-        "дневной_pnl": round(защита["дневной_pnl"], 2),
-        "лимит_убытка": MAX_DAILY_LOSS,
-        "цель_прибыли": MAX_DAILY_PROFIT,
-        "сделок_сегодня": защита["сделок_за_день"],
-        "лимит_сделок_в_день": MAX_DAILY_TRADES,
-        "прибыльных_из_5": прибыльных_из_5,
-        "цель_прибыльных": STOP_AFTER_PROFITABLE,
-        "последовательных_убытков": sum(
-            1 for s in защита["последние_исходы"][-CONSECUTIVE_LOSS_STOP:]
-            if s == "loss"
-        ),
-        "макс_убытков_подряд": CONSECUTIVE_LOSS_STOP,
-        "пауза_активна": False
-    }
-    
-    # Информация о паузе
-    if защита.get("пауза_до"):
+def check_protection():
+    p = load_protection()
+    now = datetime.utcnow()
+    if p.get("last_day") != now.strftime("%Y-%m-%d"): reset_protection(); p = load_protection()
+    if p.get("pause_until"):
         try:
-            пауза_до = datetime.fromisoformat(защита["пауза_до"])
-            if сейчас < пауза_до:
-                статус["пауза_активна"] = True
-                статус["пауза_до"] = пауза_до.strftime("%H:%M:%S")
-                статус["пауза_причина"] = защита.get("причина_паузы", "")
-                статус["осталось_минут"] = int((пауза_до - сейчас).total_seconds() / 60)
-        except (ValueError, TypeError):
-            pass
-    
-    return статус
+            pu = datetime.fromisoformat(p["pause_until"])
+            if now < pu: return False, f"Пауза: {p['pause_reason']}. {int((pu-now).total_seconds()/60)}мин"
+            p["pause_until"] = None; save_protection(p)
+        except: p["pause_until"] = None; save_protection(p)
+    if p["daily_trades"] >= MAX_DAILY_TRADES: return False, f"Лимит сделок ({MAX_DAILY_TRADES})"
+    if p["daily_pnl"] <= -MAX_DAILY_LOSS: return False, f"Убыток -${abs(p['daily_pnl']):.2f}"
+    if p["daily_pnl"] >= MAX_DAILY_PROFIT: return False, f"Прибыль +${p['daily_pnl']:.2f}"
+    last = p["last_outcomes"][-CONSECUTIVE_LOSS_STOP:]
+    if len(last) >= CONSECUTIVE_LOSS_STOP and all(x=="loss" for x in last): return False, f"{CONSECUTIVE_LOSS_STOP} убытков"
+    if len(p["last_outcomes"]) >= 5:
+        l5 = p["last_outcomes"][-5:]
+        if sum(1 for x in l5 if x=="win") >= STOP_AFTER_PROFITABLE: return False, f"{STOP_AFTER_PROFITABLE}/5 прибыльных"
+    return True, "OK"
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# СИМУЛЯТОР ТОРГОВЛИ
-# ══════════════════════════════════════════════════════════════════════════════
-
-def симулировать_сделку(сигнал, цена_входа, стоп_лосс, тейк_профит):
-    """
-    Симуляция сделки на демо-счёте.
-    
-    Аргументы:
-        сигнал: str (BUY/SELL)
-        цена_входа: float
-        стоп_лосс: float
-        тейк_профит: float
-        
-    Возвращает:
-        tuple: (сделка: dict, состояние_симулятора: dict)
-    """
-    сим = загрузить_симулятор()
-    
-    # Случайный исход (50/50)
-    исход = "win" if random.random() > 0.5 else "loss"
-    
-    # Расчёт P&L
-    if исход == "win":
-        прибыль = abs(float(тейк_профит) - float(цена_входа)) * 10
-    else:
-        прибыль = -abs(float(цена_входа) - float(стоп_лосс)) * 10
-    
-    сделка = {
-        "id": uuid.uuid4().hex[:8],
-        "сигнал": сигнал,
-        "цена_входа": цена_входа,
-        "стоп_лосс": стоп_лосс,
-        "тейк_профит": тейк_профит,
-        "время": datetime.utcnow().isoformat(),
-        "исход": исход,
-        "pnl": round(прибыль, 2)
-    }
-    
-    сим["сделки"].append(сделка)
-    сим["баланс"] += сделка["pnl"]
-    сим["дневной_pnl"] += сделка["pnl"]
-    
-    сохранить_симулятор(сим)
-    
-    logger.info(
-        f"[Симулятор] {сигнал} @ {цена_входа} | "
-        f"Исход: {исход} | P&L: ${сделка['pnl']:.2f}"
-    )
-    
-    return сделка, сим
-
-
-def форматировать_портфель():
-    """Форматирование отчёта по симулятору"""
-    сим = загрузить_симулятор()
-    защита = загрузить_защиту()
-    
-    сделки = сим["сделки"]
-    победы = [t for t in сделки if t["исход"] == "win"]
-    поражения = [t for t in сделки if t["исход"] == "loss"]
-    
-    винрейт = (len(победы) / len(сделки) * 100) if сделки else 0
-    
-    return (
-        f"📊 *Портфель (симулятор)*\n\n"
-        f"*Баланс:* ${сим['баланс']:.2f}\n"
-        f"*Всего сделок:* {len(сделки)}\n"
-        f"*Победы/Поражения:* {len(победы)}/{len(поражения)}\n"
-        f"*Винрейт:* {винрейт:.0f}%\n"
-        f"*Дневной P&L:* ${защита['дневной_pnl']:.2f}\n"
-        f"*Лимит сделок:* {защита['сделок_за_день']}/{MAX_DAILY_TRADES}"
-    )
-
+def register_trade_protection(outcome):
+    p = load_protection()
+    p["daily_trades"] += 1
+    p["daily_pnl"] += (21 if outcome=="win" else -14)
+    p["last_outcomes"].append(outcome)
+    if len(p["last_outcomes"]) > 10: p["last_outcomes"] = p["last_outcomes"][-10:]
+    save_protection(p)
+    ok, reason = check_protection()
+    if not ok:
+        p["pause_until"] = (datetime.utcnow() + timedelta(minutes=COOLDOWN_MINUTES)).isoformat()
+        p["pause_reason"] = reason
+        save_protection(p)
+        tg_send_all(f"🛑 ПАУЗА\n{reason}\n{COOLDOWN_MINUTES}мин")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# КОНВЕЙЕР ОБРАБОТКИ СИГНАЛА
+# ПАРСИНГ 100+ САЙТОВ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def обработать_торговый_сигнал(
-    сигнал,
-    цена,
-    rsi,
-    тренд,
-    atr,
-    исход=None,
-    отправлять_в_телеграм=True,
-    источник="webhook"
-):
-    """
-    Полный конвейер обработки торгового сигнала.
-    
-    Этапы:
-        1. Проверка защиты (можно ли торговать)
-        2. Нормализация признаков
-        3. Расчёт уверенности ИИ
-        4. Проверка 8 правил входа
-        5. Принятие решения (исполнить/пропустить)
-        6. Сохранение в историю
-        7. Обновление защиты
-        8. Отправка уведомления
-        
-    Аргументы:
-        сигнал: str (BUY/SELL)
-        цена: float
-        rsi: float
-        тренд: str (UP/DOWN)
-        atr: float
-        исход: str или None ("win"/"loss" для разметки)
-        отправлять_в_телеграм: bool
-        источник: str (webhook/telegram/авто/симулятор)
-        
-    Возвращает:
-        tuple: (сделка: dict, результат_генетики: dict или None)
-    """
-    # Этап 1: Проверка защиты
-    торговля_разрешена, причина_блокировки = проверить_все_защиты()
-    
-    if not торговля_разрешена and источник != "симулятор":
-        logger.warning(f"[СИГНАЛ] Отклонён ({источник}): {причина_блокировки}")
-        if отправлять_в_телеграм:
-            отправить_всем(f"🛑 *Сигнал отклонён*\n{причина_блокировки}")
-        return {"ошибка": причина_блокировки}, None
-    
-    with блокировка:
-        # Этап 2: Нормализация признаков
-        веса = загрузить_веса()
-        правила_рынка = загрузить_правила()
-        
-        признаки = нормализовать_признаки(сигнал, цена, rsi, тренд, atr)
-        
-        # Этап 3: Расчёт уверенности
-        базовая_уверенность = рассчитать_уверенность(признаки, веса)
-        уверенность, причины, порог = применить_рыночные_правила(
-            базовая_уверенность,
-            {"сигнал": сигнал, "цена": цена, "rsi": rsi, "тренд": тренд, "atr": atr},
-            правила_рынка
-        )
-        
-        # Этап 4: Проверка 8 правил
-        индикаторы = {
-            "atr": atr,
-            "тренд": тренд,
-            "ema_разница": random.uniform(2, 5),  # Заглушка
-            "rsi": rsi,
-            "уверенность_ии": уверенность
-        }
-        новости = получить_новости()
-        проверка_правил = проверить_8_правил(индикаторы, новости, сигнал)
-        
-        # Этап 5: Принятие решения
-        if уверенность >= порог and проверка_правил["решение"]:
-            решение = "исполнить"
-        else:
-            решение = "пропустить"
-        
-        # Этап 6: Сохранение сделки
-        сделка = {
-            "id": uuid.uuid4().hex[:12],
-            "получено": datetime.utcnow().isoformat() + "Z",
-            "источник": источник,
-            "входные_данные": {
-                "сигнал": сигнал,
-                "цена": цена,
-                "rsi": rsi,
-                "тренд": тренд,
-                "atr": atr
-            },
-            "признаки": признаки,
-            "веса": веса,
-            "базовая_уверенность": базовая_уверенность,
-            "уверенность": уверенность,
-            "порог": порог,
-            "причины": причины,
-            "решение": решение,
-            "правила_входа": проверка_правил["правила"],
-            "правил_выполнено": проверка_правил["выполнено"],
-            "гибкий_вход": проверка_правил["гибкий_вход"],
-            "исход": исход
-        }
-        
-        все_сделки = загрузить_сделки()
-        все_сделки.append(сделка)
-        сохранить_сделки(все_сделки)
-        
-        # Этап 7: Обновление защиты и генетика
-        результат_генетики = None
-        if исход is not None:
-            зарегистрировать_сделку_в_защите(исход)
-            
-            # Проверяем необходимость генетического алгоритма
-            новые_веса, фитнес = запустить_генетику_если_пора(все_сделки, веса)
-            if новые_веса != веса:
-                результат_генетики = {"обновлены": True, "фитнес": фитнес}
-                logger.info(f"[Генетика] Веса обновлены! Новый фитнес: {фитнес:.3f}")
-    
-    # Этап 8: Отправка уведомления
-    if отправлять_в_телеграм and решение == "исполнить":
-        эмодзи = "🟢" if сигнал == "BUY" else "🔴"
-        защита = загрузить_защиту()
-        
-        сообщение = (
-            f"{эмодзи} *{сигнал} XAUUSD*\n"
-            f"Цена: ${цена:.2f} | RSI: {rsi} | Тренд: {тренд} | ATR: {atr}\n"
-            f"Уверенность: {int(уверенность*100)}% (порог: {int(порог*100)}%)\n"
-            f"Правил выполнено: {проверка_правил['выполнено']}/8\n"
-            f"Сделок сегодня: {защита['сделок_за_день']}/{MAX_DAILY_TRADES}\n"
-            f"Дневной P&L: ${защита['дневной_pnl']:.2f}"
-        )
-        
-        if проверка_правил["гибкий_вход"]:
-            сообщение += "\n⚠️ *Гибкий вход* (RSI не совпал)"
-        
-        отправить_всем(сообщение)
-    
-    logger.info(
-        f"[СДЕЛКА] {сигнал} @ ${цена:.2f} | "
-        f"Уверенность: {int(уверенность*100)}% | "
-        f"Решение: {решение}"
-    )
-    
-    return сделка, результат_генетики
+def ddg_search(query, timeout=8):
+    headers = {"User-Agent":USER_AGENT}
+    try:
+        r = requests.get(f"https://html.duckduckgo.com/html/?q={quote_plus(query)}", headers=headers, timeout=timeout)
+        if r.status_code!=200: return ""
+        soup = BeautifulSoup(r.text,"html.parser")
+        snippets = []
+        for el in soup.select("a.result__snippet, div.result__snippet"):
+            t = el.get_text(" ",strip=True)
+            if t and len(t)>30: snippets.append(t)
+        return " \n ".join(snippets[:15])
+    except: return ""
 
+def analyze_text(text):
+    lower = text.lower()
+    bullish = sum(lower.count(t) for t in BULLISH_TERMS)
+    bearish = sum(lower.count(t) for t in BEARISH_TERMS)
+    risk = sum(lower.count(t) for t in RISK_TERMS)
+    rsi_values = [int(m) for m in RSI_PATTERN.findall(text) if 0<=int(m)<=100]
+    return {"bullish_hits":bullish,"bearish_hits":bearish,"risk_hits":risk,"rsi_mentions":rsi_values[:10],"sample_snippets":[s.strip() for s in text.split("\n") if s.strip()][:3]}
 
-# ══════════════════════════════════════════════════════════════════════════════
-# АВТОМАТИЧЕСКИЕ СИГНАЛЫ (ФОНОВЫЙ ПРОЦЕСС)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def процесс_авто_сигналов():
-    """
-    Фоновый процесс автоматической генерации сигналов.
-    Запускается каждые 5 минут.
-    Проверяет 8 правил входа и систему защиты.
-    """
-    logger.info("[АВТО] Процесс авто-сигналов запущен")
-    
-    # Начальная задержка для стабилизации системы
-    time.sleep(120)
-    
-    while True:
+def scrape_learning_sites():
+    records = []
+    for url in LEARNING_SITES:
         try:
-            # Проверяем, можно ли торговать
-            торговля_разрешена, причина = проверить_все_защиты()
-            
-            if not торговля_разрешена:
-                logger.debug(f"[АВТО] Торговля запрещена: {причина}")
-                time.sleep(300)
-                continue
-            
-            # Проверяем дневной лимит
-            защита = загрузить_защиту()
-            if защита["сделок_за_день"] >= MAX_DAILY_TRADES:
-                logger.debug(f"[АВТО] Дневной лимит сделок исчерпан")
-                time.sleep(300)
-                continue
-            
-            # Получаем текущие рыночные данные
-            цена_данные = получить_текущую_цену_xau()
-            if not цена_данные:
-                logger.warning("[АВТО] Не удалось получить цену")
-                time.sleep(300)
-                continue
-            
-            текущая_цена = цена_данные["текущая"]
-            изменение = цена_данные.get("изменение", 0)
-            
-            # Определяем направление по изменению цены
-            тренд = "UP" if изменение > 0 else "DOWN"
-            
-            # Получаем индикаторы и новости
-            индикаторы = рассчитать_индикаторы()
-            новости = получить_новости()
-            
-            # Проверяем 8 правил
-            проверка = проверить_8_правил(индикаторы, новости, тренд)
-            
-            if проверка["решение"]:
-                logger.info(
-                    f"[АВТО] СИГНАЛ: {тренд} @ ${текущая_цена:.2f} | "
-                    f"Правил: {проверка['выполнено']}/8"
-                )
-                
-                # Обрабатываем сигнал
-                обработать_торговый_сигнал(
-                    сигнал=тренд,
-                    цена=текущая_цена,
-                    rsi=индикаторы["rsi"],
-                    тренд=тренд,
-                    atr=индикаторы["atr"],
-                    источник="авто",
-                    отправлять_в_телеграм=True
-                )
-            else:
-                logger.debug(
-                    f"[АВТО] Нет сигнала | "
-                    f"Правил: {проверка['выполнено']}/8 | "
-                    f"Цена: ${текущая_цена:.2f}"
-                )
-            
-            # Ждём 5 минут до следующей проверки
-            time.sleep(300)
-        
-        except Exception as ошибка:
-            logger.error(f"[АВТО] Критическая ошибка: {ошибка}", exc_info=True)
-            time.sleep(60)
+            headers = {"User-Agent": USER_AGENT}
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code != 200: continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            text = soup.get_text(" ", strip=True)[:5000]
+            if text:
+                analysis = analyze_text(text)
+                records.append({"query":f"learn:{url.split('//')[1][:60]}","fetched_at":datetime.utcnow().isoformat()+"Z","characters_extracted":len(text),"analysis":analysis})
+                time.sleep(0.5)
+        except Exception as e: logger.warning(f"[learn] Ошибка {url}: {e}")
+    return records
 
+def gather_insights():
+    year = datetime.utcnow().year
+    queries = [q.format(y=year) for q in QUERIES_TPL]
+    sites = random.sample(FINANCE_SITES, k=min(25,len(FINANCE_SITES)))
+    site_queries = [f"site:{s} XAUUSD OR gold price" for s in sites]
+    all_queries = queries + site_queries
+    records = []
+    for q in all_queries:
+        text = ddg_search(q)
+        analysis = analyze_text(text) if text else {"bullish_hits":0,"bearish_hits":0,"risk_hits":0,"rsi_mentions":[],"sample_snippets":[]}
+        records.append({"query":q,"fetched_at":datetime.utcnow().isoformat()+"Z","characters_extracted":len(text),"analysis":analysis})
+        time.sleep(0.3)
+    fn = finnhub_news()
+    if fn: records.extend(fn)
+    learn = scrape_learning_sites()
+    if learn: records.extend(learn)
+    return records
+
+def update_knowledge_base(records):
+    kb = load_knowledge()
+    new_snips = []
+    for r in records:
+        for s in r["analysis"]["sample_snippets"]: new_snips.append({"q":r["query"],"s":s,"at":r["fetched_at"]})
+    kb["snippets"] = (new_snips + kb.get("snippets",[]))[:500]
+    bull = sum(r["analysis"]["bullish_hits"] for r in records)
+    bear = sum(r["analysis"]["bearish_hits"] for r in records)
+    risk = sum(r["analysis"]["risk_hits"] for r in records)
+    total = bull+bear or 1
+    bias = "бычье" if bull>bear else "медвежье" if bear>bull else "нейтральное"
+    kb["summary"] = f"Настроение рынка: {bias} (бычьих {bull}, медвежьих {bear}, риск-маркеров {risk}). Источников: {len(records)}."
+    kb["updated_at"] = datetime.utcnow().isoformat()+"Z"
+    save_knowledge(kb)
+    return kb
+
+def derive_rules(insight_records, trade_history):
+    if not insight_records: return default_rules()
+    total_bull = sum(r["analysis"]["bullish_hits"] for r in insight_records)
+    total_bear = sum(r["analysis"]["bearish_hits"] for r in insight_records)
+    total_risk = sum(r["analysis"]["risk_hits"] for r in insight_records)
+    denom = total_bull+total_bear or 1
+    market_bias = "bullish" if total_bull>total_bear else "bearish" if total_bear>total_bull else "neutral"
+    bias_strength = round(abs(total_bull-total_bear)/denom,3)
+    all_rsi = [v for r in insight_records for v in r["analysis"]["rsi_mentions"]]
+    rsi_oversold = max(15,min(40,min(all_rsi) if all_rsi else 30))
+    rsi_overbought = max(60,min(85,max(all_rsi) if all_rsi else 70))
+    risk_mode = "elevated" if total_risk>max(5,(total_bull+total_bear)/4) else "normal"
+    labeled = [t for t in trade_history if t.get("outcome") in ("win","loss")]
+    wins = [t for t in labeled if t["outcome"]=="win"]
+    historical_winrate = round(len(wins)/len(labeled),3) if labeled else None
+    return {"generated_at":datetime.utcnow().isoformat()+"Z","market_bias":market_bias,"bias_strength":bias_strength,"preferred_signal":"BUY" if market_bias=="bullish" else "SELL" if market_bias=="bearish" else "HOLD","rsi_oversold":rsi_oversold,"rsi_overbought":rsi_overbought,"risk_mode":risk_mode,"atr_caution_above":30 if risk_mode=="elevated" else 50,"confidence_threshold":CONFIDENCE_THRESHOLD,"historical_winrate":historical_winrate}
+
+def evolve_insights(trade_history):
+    new_records = gather_insights()
+    history = (load_insights() + new_records)[-200:]
+    _write_json(INSIGHTS_FILE, history)
+    update_knowledge_base(new_records)
+    rules = derive_rules(history, trade_history)
+    save_rules(rules)
+    return {"new":len(new_records),"rules":rules}
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DEEPSEEK AI ЧАТ
+# DEEPSEEK AI
 # ══════════════════════════════════════════════════════════════════════════════
 
-def задать_вопрос_deepseek(вопрос):
-    """
-    Отправка вопроса к DeepSeek через OpenRouter API.
-    
-    Аргументы:
-        вопрос: str
-        
-    Возвращает:
-        tuple: (ответ: str или None, ошибка: str или None)
-    """
-    api_ключ = DEEPSEEK_API_KEY or OPENROUTER_API_KEY
-    
-    if not api_ключ:
-        return None, "API ключ DeepSeek не задан в настройках"
-    
-    # Получаем контекст для более точных ответов
-    with блокировка:
-        все_сделки = загрузить_сделки()
-    
-    размеченные = [t for t in все_сделки if t.get("исход") in ("win", "loss")]
-    if размеченные:
-        винрейт = round(
-            sum(1 for t in размеченные if t["исход"] == "win") / len(размеченные),
-            3
-        )
+DEEPSEEK_SYSTEM = "Ты — дружелюбный ИИ-помощник и опытный трейдер по золоту (XAUUSD). Отвечай ТОЛЬКО на русском языке."
+
+def deepseek_ask(question):
+    if not DEEPSEEK_API_KEY: return None, "DEEPSEEK_API_KEY не задан."
+    with _lock: trades = load_trades()
+    rules = load_rules()
+    kb = load_knowledge()
+    labeled = [t for t in trades if t.get("outcome") in ("win","loss")]
+    wins = sum(1 for t in labeled if t["outcome"]=="win")
+    wr = (wins/len(labeled)) if labeled else None
+    price_data = get_current_xau_price()
+    if price_data and price_data.get("current"):
+        price_info = f"Текущая цена XAUUSD: ${price_data['current']:.2f}"
     else:
-        винрейт = None
-    
-    цена_данные = получить_текущую_цену_xau()
-    если цена_данные:
-        информация_о_цене = f"Текущая цена XAUUSD: ${цена_данные['текущая']:.2f}"
-    else:
-        информация_о_цене = "Цена XAUUSD временно недоступна"
-    
-    # Формируем системный промпт с контекстом
-    системный_промпт = (
-        "Ты — профессиональный ИИ-трейдер, специализирующийся на золоте (XAUUSD). "
-        "Отвечай на русском языке, кратко и по делу. "
-        "Ты имеешь доступ к реальным рыночным данным."
-    )
-    
-    контекст = (
-        f"{информация_о_цене}\n"
-        f"Всего сделок в системе: {len(все_сделки)}\n"
-        f"Текущий винрейт: {винрейт if винрейт else 'нет данных'}"
-    )
-    
-    # Отправляем запрос
-    try:
-        заголовки = {
-            "Authorization": f"Bearer {api_ключ}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": PUBLIC_URL or "https://xau-ai.onrender.com",
-            "X-Title": "XAU AI Trader"
-        }
-        
-        данные_запроса = {
-            "model": DEEPSEEK_MODEL,
-            "messages": [
-                {"role": "system", "content": системный_промпт},
-                {"role": "system", "content": f"КОНТЕКСТ:\n{контекст}"},
-                {"role": "user", "content": вопрос}
-            ],
-            "temperature": 0.5,
-            "max_tokens": 700
-        }
-        
-        url = f"{DEEPSEEK_BASE_URL}/v1/chat/completions"
-        
-        logger.debug(f"Отправка запроса к DeepSeek ({len(вопрос)} символов)")
-        
-        ответ = requests.post(
-            url,
-            headers=заголовки,
-            json=данные_запроса,
-            timeout=45
-        )
-        
-        if ответ.status_code == 200:
-            данные_ответа = ответ.json()
-            ответ_ии = данные_ответа["choices"][0]["message"]["content"].strip()
-            logger.debug(f"Ответ DeepSeek: {len(ответ_ии)} символов")
-            return ответ_ии, None
-        else:
-            ошибка = f"API вернул статус {ответ.status_code}: {ответ.text[:200]}"
-            logger.error(ошибка)
-            return None, ошибка
-    
-    except requests.exceptions.Timeout:
-        return None, "Превышено время ожидания ответа от AI"
-    except Exception as ошибка:
-        logger.error(f"Ошибка DeepSeek: {ошибка}")
-        return None, f"Ошибка связи с AI: {str(ошибка)}"
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# СБОР ДАННЫХ СО 100+ САЙТОВ
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Список финансовых сайтов для парсинга
-ФИНАНСОВЫЕ_САЙТЫ = [
-    "investing.com", "fxstreet.com", "dailyfx.com", "kitco.com",
-    "tradingview.com", "marketwatch.com", "bloomberg.com", "reuters.com",
-    "cnbc.com", "ft.com", "wsj.com", "forbes.com", "finance.yahoo.com",
-    "finviz.com", "seekingalpha.com", "zerohedge.com", "macrotrends.net",
-    "marketpulse.com", "fxempire.com", "forexlive.com", "babypips.com",
-    "dailyforex.com", "forexfactory.com", "goldprice.org", "gold.org"
-]
-
-БЫЧЬИ_ТЕРМИНЫ = [
-    "bullish", "rally", "uptrend", "breakout", "buy", "long",
-    "рост", "покупка", "вверх", "бычий", "ралли"
-]
-
-МЕДВЕЖЬИ_ТЕРМИНЫ = [
-    "bearish", "decline", "downtrend", "breakdown", "sell", "short",
-    "падение", "продажа", "вниз", "медвежий", "снижение"
-]
-
-РИСК_ТЕРМИНЫ = [
-    "volatile", "volatility", "risk", "uncertainty",
-    "волатильность", "риск", "неопределённость"
-]
-
-
-def поиск_в_duckduckgo(запрос, таймаут=8):
-    """
-    Поиск информации через DuckDuckGo.
-    
-    Аргументы:
-        запрос: str
-        таймаут: int
-        
-    Возвращает:
-        str (текстовые выдержки из результатов)
-    """
-    заголовки = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        price_info = "Цена XAUUSD временно недоступна"
+    context = f"{price_info}\nПравила: {json.dumps(rules, ensure_ascii=False)[:800]}\nСделок: {len(trades)}, винрейт: {round(wr,3) if wr else 'нет'}\nБаза знаний: {kb.get('summary','—')}"
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": DEEPSEEK_SYSTEM},
+            {"role": "system", "content": f"КОНТЕКСТ:\n{context}"},
+            {"role": "user", "content": question}
+        ],
+        "temperature": 0.5, "max_tokens": 700
     }
-    
     try:
-        url = f"https://html.duckduckgo.com/html/?q={quote_plus(запрос)}"
-        ответ = requests.get(url, headers=заголовки, timeout=таймаут)
-        
-        if ответ.status_code != 200:
-            return ""
-        
-        # Парсим HTML
-        from bs4 import BeautifulSoup
-        суп = BeautifulSoup(ответ.text, "html.parser")
-        
-        выдержки = []
-        for элемент in суп.select("a.result__snippet, div.result__snippet"):
-            текст = элемент.get_text(" ", strip=True)
-            if текст and len(текст) > 30:
-                выдержки.append(текст)
-        
-        if not выдержки:
-            # Fallback: ищем любые параграфы
-            for элемент in суп.find_all(["p", "span"]):
-                текст = элемент.get_text(" ", strip=True)
-                if 50 < len(текст) < 400:
-                    выдержки.append(текст)
-                if len(выдержки) > 20:
-                    break
-        
-        результат = " \n ".join(выдержки[:15])
-        logger.debug(f"DuckDuckGo: '{запрос[:50]}' → {len(результат)} символов")
-        return результат
-    
-    except Exception as ошибка:
-        logger.warning(f"DuckDuckGo ошибка: {ошибка}")
-        return ""
-
-
-def анализировать_текст_новостей(текст):
-    """
-    Анализ текста на наличие бычьих, медвежьих и риск-сигналов.
-    
-    Аргументы:
-        текст: str
-        
-    Возвращает:
-        dict с результатами анализа
-    """
-    нижний_регистр = текст.lower()
-    
-    return {
-        "бычьи_сигналы": sum(нижний_регистр.count(термин) for термин in БЫЧЬИ_ТЕРМИНЫ),
-        "медвежьи_сигналы": sum(нижний_регистр.count(термин) for термин in МЕДВЕЖЬИ_ТЕРМИНЫ),
-        "риск_сигналы": sum(нижний_регистр.count(термин) for термин in РИСК_ТЕРМИНЫ),
-        "rsi_упоминания": [],
-        "выдержки": [
-            строка.strip()
-            for строка in текст.split("\n")
-            if строка.strip()
-        ][:3]
-    }
-
-
-def собрать_рыночные_инсайты():
-    """
-    Сбор рыночных инсайтов из множества источников.
-    Использует DuckDuckGo для поиска по 25+ финансовым сайтам.
-    
-    Возвращает:
-        list: записи с анализом
-    """
-    запросы = [
-        "XAUUSD прогноз цена золота",
-        "XAUUSD technical analysis today",
-        "gold price forecast 2024",
-        "XAUUSD support resistance levels"
-    ]
-    
-    # Добавляем поиск по конкретным сайтам
-    выбранные_сайты = random.sample(
-        ФИНАНСОВЫЕ_САЙТЫ,
-        min(25, len(ФИНАНСОВЫЕ_САЙТЫ))
-    )
-    сайт_запросы = [
-        f"site:{сайт} XAUUSD OR gold price"
-        for сайт in выбранные_сайты
-    ]
-    
-    все_запросы = запросы + сайт_запросы
-    записи = []
-    
-    logger.info(f"[ИНСАЙТЫ] Начинаю сбор ({len(все_запросы)} запросов)")
-    
-    for запрос in все_запросы:
-        текст = поиск_в_duckduckgo(запрос)
-        
-        if текст:
-            анализ = анализировать_текст_новостей(текст)
-        else:
-            анализ = {
-                "бычьи_сигналы": 0,
-                "медвежьи_сигналы": 0,
-                "риск_сигналы": 0,
-                "rsi_упоминания": [],
-                "выдержки": []
-            }
-        
-        записи.append({
-            "запрос": запрос,
-            "время": datetime.utcnow().isoformat() + "Z",
-            "символов_собрано": len(текст) if текст else 0,
-            "анализ": анализ
-        })
-        
-        # Задержка чтобы не нагружать API
-        time.sleep(0.2)
-    
-    logger.info(f"[ИНСАЙТЫ] Собрано {len(записи)} записей")
-    
-    return записи
-
-
-def обновить_базу_знаний(новые_записи):
-    """
-    Обновление базы знаний на основе собранных инсайтов.
-    
-    Аргументы:
-        новые_записи: list
-    """
-    база = загрузить_базу_знаний()
-    
-    # Добавляем новые выдержки
-    новые_выдержки = []
-    for запись in новые_записи:
-        for выдержка in запись["анализ"]["выдержки"]:
-            новые_выдержки.append({
-                "запрос": запись["запрос"],
-                "текст": выдержка,
-                "время": запись["время"]
-            })
-    
-    # Храним последние 500 выдержек
-    база["выдержки"] = (новые_выдержки + база.get("выдержки", []))[:500]
-    
-    # Обновляем сводку
-    бычьи = sum(р["анализ"]["бычьи_сигналы"] for р in новые_записи)
-    медвежьи = sum(р["анализ"]["медвежьи_сигналы"] for р in новые_записи)
-    риски = sum(р["анализ"]["риск_сигналы"] for р in новые_записи)
-    
-    if бычьи > медвежьи:
-        настрой = "бычье"
-    elif медвежьи > бычьи:
-        настрой = "медвежье"
-    else:
-        настрой = "нейтральное"
-    
-    база["сводка"] = (
-        f"Рынок: {настрой} настроение. "
-        f"Бычьих сигналов: {бычьи}, медвежьих: {медвежьи}, "
-        f"риск-маркеров: {риски}. "
-        f"Источников: {len(новые_записи)}."
-    )
-    база["обновлено"] = datetime.utcnow().isoformat() + "Z"
-    
-    сохранить_базу_знаний(база)
-    logger.info(f"[БАЗА] Обновлена. Выдержек: {len(база['выдержки'])}")
-
+        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json", "HTTP-Referer": PUBLIC_URL or "https://xau-ai.onrender.com", "X-Title": "XAU AI Trader"}
+        r = requests.post(f"{DEEPSEEK_BASE_URL}/v1/chat/completions", headers=headers, json=payload, timeout=45)
+        if r.status_code != 200: return None, f"DeepSeek вернул {r.status_code}"
+        data = r.json()
+        return data["choices"][0]["message"]["content"].strip(), None
+    except Exception as e: return None, f"Ошибка DeepSeek: {e}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FLASK ПРИЛОЖЕНИЕ
+# СИМУЛЯТОР
+# ══════════════════════════════════════════════════════════════════════════════
+
+def sim_trade(signal, price, sl, tp):
+    sim = load_simulator()
+    trade = {"id":uuid.uuid4().hex[:8],"signal":signal,"price":price,"sl":sl,"tp":tp,"time":datetime.utcnow().isoformat(),"outcome":None}
+    outcome = "win" if random.random()>0.5 else "loss"
+    pnl = abs(float(tp)-float(price))*10 if outcome=="win" else -abs(float(price)-float(sl))*10
+    trade["outcome"] = outcome
+    trade["pnl"] = round(pnl,2)
+    sim["trades"].append(trade)
+    sim["balance"] += trade["pnl"]
+    sim["daily_pnl"] += trade["pnl"]
+    save_simulator(sim)
+    return trade, sim
+
+def format_portfolio():
+    sim = load_simulator()
+    trades = sim["trades"]
+    wins = [t for t in trades if t["outcome"]=="win"]
+    losses = [t for t in trades if t["outcome"]=="loss"]
+    wr = (len(wins)/len(trades)*100) if trades else 0
+    return f"📊 *Симулятор*\n*Баланс:* ${sim['balance']:.2f}\n*Сделок:* {len(trades)} ({len(wins)}П/{len(losses)}У)\n*Винрейт:* {wr:.0f}%"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FLASK
 # ══════════════════════════════════════════════════════════════════════════════
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
-# ══════════════════════════════════════════════════════════════════════════════
-# HTML СТИЛИ
-# ══════════════════════════════════════════════════════════════════════════════
-
-СТИЛИ_CSS = """
-:root {
-    --bg: #0d1117;
-    --card: #161b22;
-    --border: #30363d;
-    --green: #3fb950;
-    --red: #f85149;
-    --gold: #d2991d;
-    --text: #c9d1d9;
-    --sub: #8b949e;
-}
-
-.light {
-    --bg: #ffffff;
-    --card: #f6f8fa;
-    --border: #d0d7de;
-    --text: #24292f;
-    --sub: #656d76;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-}
-
-.layout {
-    display: flex;
-}
-
-.sidebar {
-    width: 220px;
-    background: var(--card);
-    border-right: 1px solid var(--border);
-    padding: 16px 0;
-    position: fixed;
-    height: 100vh;
-    overflow-y: auto;
-    z-index: 100;
-}
-
-.sidebar a {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 20px;
-    color: var(--text);
-    text-decoration: none;
-    font-size: 0.9em;
-    transition: background 0.2s;
-}
-
-.sidebar a:hover {
-    background: rgba(210, 153, 29, 0.1);
-    color: var(--gold);
-}
-
-.sidebar .logo {
-    font-size: 1.2em;
-    font-weight: 700;
-    padding: 10px 20px 20px;
-    color: var(--gold);
-}
-
-.main {
-    margin-left: 220px;
-    flex: 1;
-    padding: 20px;
-}
-
-.card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 16px;
-}
-
-.btn {
-    padding: 10px 20px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.9em;
-    font-weight: 600;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: opacity 0.2s;
-}
-
-.btn:hover { opacity: 0.85; }
-
-.btn-gold { background: var(--gold); color: #000; }
-.btn-green { background: var(--green); color: #000; }
-.btn-red { background: var(--red); color: #fff; }
-.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-
-.grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-}
-
-@media (max-width: 768px) {
-    .grid-2 { grid-template-columns: 1fr; }
-    .sidebar { width: 60px; }
-    .sidebar a span { display: none; }
-    .main { margin-left: 60px; }
-}
-
-input, select, textarea {
-    width: 100%;
-    padding: 10px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
-    margin-bottom: 10px;
-    font-family: inherit;
-}
-
-.badge {
-    font-size: 0.7em;
-    padding: 3px 10px;
-    border-radius: 10px;
-    font-weight: 600;
-}
-
-.badge-vip { background: rgba(210, 153, 29, 0.2); color: var(--gold); }
-.badge-free { background: rgba(139, 148, 158, 0.2); color: var(--sub); }
-.badge-admin { background: rgba(63, 185, 80, 0.2); color: var(--green); }
-
-.alert {
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-}
-
-.alert-success { background: rgba(63, 185, 80, 0.1); border: 1px solid var(--green); color: var(--green); }
-.alert-error { background: rgba(248, 81, 73, 0.1); border: 1px solid var(--red); color: var(--red); }
-.alert-info { background: rgba(210, 153, 29, 0.1); border: 1px solid var(--gold); color: var(--gold); }
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9em;
-}
-
-th, td {
-    padding: 10px;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-}
-
-th {
-    color: var(--sub);
-    font-weight: 600;
-}
-
-.pricing-card {
-    border: 2px solid var(--border);
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-}
-
-.pricing-card.active {
-    border-color: var(--gold);
-}
-
-.pricing-card .price {
-    font-size: 2.5em;
-    font-weight: 700;
-    color: var(--gold);
-    margin: 15px 0;
-}
-
-.pricing-card ul {
-    text-align: left;
-    list-style: none;
-    margin: 15px 0;
-}
-
-.pricing-card li {
-    padding: 5px 0;
-    font-size: 0.9em;
-}
-
-.chart-wrapper {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 12px;
-    height: 450px;
-}
-
-.chart-wrapper iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-}
-
-.protection-bar {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 16px;
-    margin-bottom: 12px;
-    display: flex;
-    justify-content: space-between;
-}
-
-.protection-bar.blocked {
-    border-color: var(--red);
-    background: rgba(248, 81, 73, 0.05);
-}
-
-.footer {
-    text-align: center;
-    color: var(--sub);
-    font-size: 0.75em;
-    padding: 16px;
-}
-
-.footer a {
-    color: var(--gold);
-    text-decoration: none;
-}
+CSS = """
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--green:#3fb950;--red:#f85149;--gold:#d2991d;--text:#c9d1d9;--sub:#8b949e}
+.light{--bg:#fff;--card:#f6f8fa;--border:#d0d7de;--text:#24292f;--sub:#656d76}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.layout{display:flex}
+.sidebar{width:220px;background:var(--card);border-right:1px solid var(--border);padding:16px 0;position:fixed;height:100vh;overflow-y:auto;z-index:100}
+.sidebar a{display:flex;align-items:center;gap:10px;padding:12px 20px;color:var(--text);text-decoration:none;font-size:.9em}
+.sidebar a:hover{background:rgba(210,153,29,.1);color:var(--gold)}
+.sidebar .logo{font-size:1.2em;font-weight:700;padding:10px 20px 20px;color:var(--gold)}
+.main{margin-left:220px;flex:1;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:.9em;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.btn-gold{background:var(--gold);color:#000}
+.btn-green{background:var(--green);color:#000}
+.btn-red{background:var(--red);color:#fff}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:768px){.grid-2{grid-template-columns:1fr}.sidebar{width:60px}.sidebar a span{display:none}.main{margin-left:60px}}
+input,select,textarea{width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);margin-bottom:10px;font-family:inherit}
+.badge{font-size:.7em;padding:3px 10px;border-radius:10px}
+.badge-vip{background:rgba(210,153,29,.2);color:var(--gold)}
+.badge-free{background:rgba(139,148,158,.2);color:var(--sub)}
+.badge-admin{background:rgba(63,185,80,.2);color:var(--green)}
+.alert{padding:12px;border-radius:8px;margin-bottom:12px}
+.alert-success{background:rgba(63,185,80,.1);border:1px solid var(--green);color:var(--green)}
+.alert-error{background:rgba(248,81,73,.1);border:1px solid var(--red);color:var(--red)}
+.alert-info{background:rgba(210,153,29,.1);border:1px solid var(--gold);color:var(--gold)}
+table{width:100%;border-collapse:collapse;font-size:.9em}
+th,td{padding:10px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--sub);font-weight:600}
+.pricing-card{border:2px solid var(--border);border-radius:12px;padding:24px;text-align:center}
+.pricing-card.active{border-color:var(--gold)}
+.pricing-card .price{font-size:2.5em;font-weight:700;color:var(--gold);margin:15px 0}
+.pricing-card ul{text-align:left;list-style:none;margin:15px 0}
+.pricing-card li{padding:5px 0}
+.protection-bar{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;justify-content:space-between}
+.protection-bar.blocked{border-color:var(--red)}
 """
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ФУНКЦИЯ РЕНДЕРИНГА СТРАНИЦ
-# ══════════════════════════════════════════════════════════════════════════════
-
-def отрисовать_страницу(содержимое, заголовок="XAU AI Trader"):
-    """
-    Оборачивает содержимое в HTML с боковым меню и стилями.
-    
-    Аргументы:
-        содержимое: str (HTML контент)
-        заголовок: str (title страницы)
-        
-    Возвращает:
-        str (полный HTML)
-    """
-    пользователь = получить_текущего_пользователя()
-    тип_подписки = получить_тип_подписки()
-    
-    # Определяем отображаемое имя подписки
-    имя_подписки = {
-        "free": "FREE",
-        "vip": "VIP",
-        "admin": "ADMIN"
-    }.get(тип_подписки, "FREE")
-    
-    # CSS класс для бейджа
-    класс_бейджа = {
-        "free": "free",
-        "vip": "vip",
-        "admin": "admin"
-    }.get(тип_подписки, "free")
-    
-    # Проверка прав администратора
-    это_админ = тип_подписки == "admin"
-    
-    # Тема оформления (доступна VIP и Admin)
-    тема = ""
-    if тип_подписки in ("vip", "admin") and пользователь:
-        тема = пользователь.get("тема", "dark")
-    
-    класс_темы = "light" if тема == "light" else ""
-    
-    # Формируем полный HTML
-    return f"""
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{заголовок} | XAU AI Trader</title>
-    <style>{СТИЛИ_CSS}</style>
-</head>
-<body class="{класс_темы}">
-    <div class="layout">
-        <!-- Боковое меню -->
-        <div class="sidebar">
-            <div class="logo">🏆 XAU AI</div>
-            <a href="/dashboard">📊 Дашборд</a>
-            <a href="/deposit">💰 Депозит</a>
-            <a href="/withdraw">💸 Вывод</a>
-            <a href="/history">📋 История</a>
-            <a href="/ai-chat">🤖 AI Чат</a>
-            <a href="/subscription">
-                🛡 Подписка
-                <span class="badge badge-{класс_бейджа}">{имя_подписки}</span>
-            </a>
-            <a href="/settings">⚙️ Настройки</a>
-            <a href="/support">🆘 Поддержка</a>
-            {f'<a href="/admin">👑 Админ-панель</a>' if это_админ else ''}
-            <a href="/logout" style="color: var(--red);">🚪 Выход</a>
-        </div>
-        
-        <!-- Основной контент -->
-        <div class="main">
-            {содержимое}
-        </div>
-    </div>
-</body>
-</html>"""
-
+def render_page(content, title="XAU AI Trader"):
+    u = get_user()
+    sub = get_sub()
+    sn = {"free":"FREE","vip":"VIP","admin":"ADMIN"}.get(sub,"FREE")
+    sb = {"free":"free","vip":"vip","admin":"admin"}.get(sub,"free")
+    ad = sub == "admin"
+    theme = "light" if (sub in ("vip","admin") and u and u.get("theme")=="light") else ""
+    return f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>{title}</title><style>{CSS}</style></head><body class="{theme}"><div class="layout"><div class="sidebar"><div class="logo">🏆 XAU AI</div><a href="/dashboard">📊 Дашборд</a><a href="/deposit">💰 Депозит</a><a href="/withdraw">💸 Вывод</a><a href="/history">📋 История</a><a href="/ai-chat">🤖 AI Чат</a><a href="/subscription">🛡 Подписка <span class="badge badge-{sb}">{sn}</span></a><a href="/settings">⚙️ Настройки</a><a href="/support">🆘 Поддержка</a>{'<a href="/admin">👑 Админ</a>' if ad else ''}<a href="/logout">🚪 Выход</a></div><div class="main">{content}</div></div></body></html>"""
 
 # ══════════════════════════════════════════════════════════════════════════════
-# МАРШРУТЫ АВТОРИЗАЦИИ
+# МАРШРУТЫ
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/")
-def главная_страница():
-    """Перенаправление на дашборд или вход"""
-    if "юзер" in session:
-        return redirect("/dashboard")
-    return redirect("/login")
+def index(): return redirect("/login" if "user" not in session else "/dashboard")
 
-
-@app.route("/login", methods=["GET", "POST"])
-def страница_входа():
-    """Страница входа в систему"""
-    сообщение = ""
-    
+@app.route("/login", methods=["GET","POST"])
+def login():
+    msg = ""
     if request.method == "POST":
-        email = request.form.get("email", "").lower().strip()
-        пароль = request.form.get("password", "")
-        
-        if not email or not пароль:
-            сообщение = '<div class="alert alert-error">Заполните все поля</div>'
-        else:
-            пользователи = загрузить_пользователей()
-            
-            if email in пользователи:
-                хеш = пользователи[email].get("пароль", "")
-                if хеш == хешировать_пароль(пароль):
-                    session["юзер"] = email
-                    logger.info(f"Вход: {email}")
-                    return redirect("/dashboard")
-                else:
-                    сообщение = '<div class="alert alert-error">Неверный пароль</div>'
-            else:
-                сообщение = '<div class="alert alert-error">Пользователь не найден</div>'
-    
-    return отрисовать_страницу(f"""
-    <div class="card" style="max-width: 400px; margin: 50px auto;">
-        <h2 style="text-align: center; margin-bottom: 20px;">🔐 Вход в систему</h2>
-        {сообщение}
-        <form method="POST">
-            <label>Email:</label>
-            <input type="email" name="email" placeholder="your@email.com" required>
-            
-            <label>Пароль:</label>
-            <input type="password" name="password" placeholder="••••••••" required>
-            
-            <button type="submit" class="btn btn-gold" style="width: 100%; margin-top: 10px;">
-                Войти
-            </button>
-        </form>
-        <p style="text-align: center; margin-top: 15px; color: var(--sub);">
-            Нет аккаунта?
-            <a href="/register" style="color: var(--gold);">Зарегистрироваться</a>
-        </p>
-    </div>
-    """, "Вход")
+        e = request.form.get("email","").lower().strip()
+        p = request.form.get("password","")
+        users = load_users()
+        if e in users and users[e]["password"] == hash_pw(p):
+            session["user"] = e
+            return redirect("/dashboard")
+        msg = '<div class="alert alert-error">Неверный email или пароль</div>'
+    return render_page(f'<div class="card" style="max-width:400px;margin:50px auto;"><h2 style="text-align:center;">🔐 Вход</h2>{msg}<form method="POST"><input type="email" name="email" placeholder="Email" required><input type="password" name="password" placeholder="Пароль" required><button class="btn btn-gold" style="width:100%;">Войти</button></form><p style="text-align:center;margin-top:15px;"><a href="/register" style="color:var(--gold);">Регистрация</a></p></div>',"Вход")
 
-
-@app.route("/register", methods=["GET", "POST"])
-def страница_регистрации():
-    """Страница регистрации нового пользователя"""
-    сообщение = ""
-    
+@app.route("/register", methods=["GET","POST"])
+def register():
+    msg = ""
     if request.method == "POST":
-        email = request.form.get("email", "").lower().strip()
-        пароль = request.form.get("password", "")
-        
-        # Валидация
-        if not email or not пароль:
-            сообщение = '<div class="alert alert-error">Заполните все поля</div>'
-        elif len(пароль) < 6:
-            сообщение = '<div class="alert alert-error">Пароль должен быть минимум 6 символов</div>'
-        elif "@" not in email or "." not in email:
-            сообщение = '<div class="alert alert-error">Некорректный email</div>'
+        e = request.form.get("email","").lower().strip()
+        p = request.form.get("password","")
+        if len(p) < 6: msg = '<div class="alert alert-error">Пароль минимум 6 символов</div>'
         else:
-            пользователи = загрузить_пользователей()
-            
-            if email in пользователи:
-                сообщение = '<div class="alert alert-error">Этот email уже зарегистрирован</div>'
+            users = load_users()
+            if e in users: msg = '<div class="alert alert-error">Email уже зарегистрирован</div>'
             else:
-                # Определяем тип подписки
-                if email in ADMIN_EMAILS:
-                    тип_подписки = "admin"
-                else:
-                    тип_подписки = "free"
-                
-                # Создаём пользователя
-                пользователи[email] = {
-                    "пароль": хешировать_пароль(пароль),
-                    "подписка": тип_подписки,
-                    "баланс": ACCOUNT_BALANCE,
-                    "ai_счётчик": 0,
-                    "ai_дата": datetime.utcnow().strftime("%Y-%m-%d"),
-                    "тема": "dark",
-                    "создан": datetime.utcnow().isoformat(),
-                    "последний_вход": datetime.utcnow().isoformat()
-                }
-                
-                сохранить_пользователей(пользователи)
-                session["юзер"] = email
-                
-                logger.info(f"Новый пользователь: {email} ({тип_подписки})")
-                
-                # Уведомление админам
-                уведомить_администраторов(
-                    f"🆕 *Новый пользователь!*\n"
-                    f"Email: {email}\n"
-                    f"Подписка: {тип_подписки.upper()}"
-                )
-                
+                s = "admin" if e in ADMIN_EMAILS else "free"
+                users[e] = {"password":hash_pw(p),"sub":s,"balance":200,"ai_count":0,"ai_date":datetime.utcnow().strftime("%Y-%m-%d"),"theme":"dark","created":datetime.utcnow().isoformat()}
+                save_users(users)
+                session["user"] = e
                 return redirect("/dashboard")
-    
-    return отрисовать_страницу(f"""
-    <div class="card" style="max-width: 400px; margin: 50px auto;">
-        <h2 style="text-align: center; margin-bottom: 20px;">📝 Регистрация</h2>
-        {сообщение}
-        <form method="POST">
-            <label>Email:</label>
-            <input type="email" name="email" placeholder="your@email.com" required>
-            
-            <label>Пароль (минимум 6 символов):</label>
-            <input type="password" name="password" placeholder="••••••••" required minlength="6">
-            
-            <button type="submit" class="btn btn-gold" style="width: 100%; margin-top: 10px;">
-                Зарегистрироваться
-            </button>
-        </form>
-        <p style="text-align: center; margin-top: 15px; color: var(--sub);">
-            Уже есть аккаунт?
-            <a href="/login" style="color: var(--gold);">Войти</a>
-        </p>
-    </div>
-    """, "Регистрация")
-
+    return render_page(f'<div class="card" style="max-width:400px;margin:50px auto;"><h2 style="text-align:center;">📝 Регистрация</h2>{msg}<form method="POST"><input type="email" name="email" placeholder="Email" required><input type="password" name="password" placeholder="Пароль (мин 6)" required><button class="btn btn-gold" style="width:100%;">Зарегистрироваться</button></form></div>',"Регистрация")
 
 @app.route("/logout")
-def выход():
-    """Выход из системы"""
-    пользователь = session.pop("юзер", None)
-    if пользователь:
-        logger.info(f"Выход: {пользователь}")
+def logout():
+    session.pop("user",None)
     return redirect("/login")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ДАШБОРД
-# ══════════════════════════════════════════════════════════════════════════════
-
 @app.route("/dashboard")
-@вход_требуется
-def дашборд():
-    """Главная страница после входа"""
-    пользователь = получить_текущего_пользователя()
-    если not пользователь:
-        return redirect("/login")
-    
-    # Получаем данные о цене
-    цена_данные = получить_текущую_цену_xau()
-    if цена_данные:
-        цена_текст = f"{цена_данные['текущая']:,.2f}"
-        изменение_текст = f"{цена_данные.get('изменение_процент', 0):+.2f}%"
-        класс_изменения = "" if цена_данные.get("изменение", 0) >= 0 else "down"
+@login_required
+def dashboard():
+    u = get_user()
+    price_data = get_current_xau_price()
+    if price_data and price_data.get("current"):
+        pt = f"{price_data['current']:,.2f}"
+        ch = price_data.get("change_percent") or 0
+        ct = f"{ch:+.2f}%"
+        cc = "" if ch >= 0 else "down"
     else:
-        цена_текст = "4,735.93"
-        изменение_текст = "+0.55%"
-        класс_изменения = ""
-        цена_данные = {"текущая": 4735.93}
-    
-    # Получаем сделки за сегодня
-    сегодня = datetime.utcnow().strftime("%Y-%m-%d")
-    все_сделки = загрузить_сделки()
-    сделки_сегодня = [
-        t for t in все_сделки
-        if t.get("юзер") == session["юзер"] and t.get("дата") == сегодня
-    ]
-    
-    # Считаем P&L
-    общий_pnl = sum(t.get("pnl", 0) for t in сделки_сегодня)
-    
-    # Статус защиты
-    защита = загрузить_защиту()
-    статус_защиты = проверить_все_защиты()
-    
-    return отрисовать_страницу(f"""
-    <!-- Цена -->
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <h2>💰 XAUUSD: ${цена_текст}</h2>
-                <span style="color: {'var(--green)' if класс_изменения == '' else 'var(--red)'};">
-                    {изменение_текст}
-                </span>
-            </div>
-            <div style="text-align: right; color: var(--sub); font-size: 0.9em;">
-                <div>Баланс: <strong>${пользователь['баланс']:.2f}</strong></div>
-                <div>Сделок сегодня: {len(сделки_сегодня)}/{MAX_DAILY_TRADES}</div>
-                <div>P&L: <span style="color: {'var(--green)' if общий_pnl >= 0 else 'var(--red)'};">${общий_pnl:.2f}</span></div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Кнопки BUY/SELL -->
-    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-        <form method="POST" action="/trade" style="flex: 1;">
-            <input type="hidden" name="side" value="BUY">
-            <input type="hidden" name="price" value="{цена_данные['текущая']}">
-            <button type="submit" class="btn btn-green" style="width: 100%;">🟢 BUY XAUUSD</button>
-        </form>
-        <form method="POST" action="/trade" style="flex: 1;">
-            <input type="hidden" name="side" value="SELL">
-            <input type="hidden" name="price" value="{цена_данные['текущая']}">
-            <button type="submit" class="btn btn-red" style="width: 100%;">🔴 SELL XAUUSD</button>
-        </form>
-    </div>
-    
-    <!-- Статус защиты -->
-    <div class="protection-bar {'blocked' if not статус_защиты[0] else ''}">
-        <span>🛡 Защита: {'✅ Активна' if статус_защиты[0] else '⚠️ Ограничена'}</span>
-        <span>P&L дня: <strong>${защита['дневной_pnl']:.2f}</strong></span>
-    </div>
-    
-    <!-- График TradingView -->
-    <div class="chart-wrapper">
-        <iframe src="https://s.tradingview.com/widgetembed/?symbol=XAUUSD&interval=5&theme=dark&style=1&timezone=Europe%2FMoscow&locale=ru&studies=RSI%40tv-basicstudies" 
-                style="width: 100%; height: 100%; border: none;">
-        </iframe>
-    </div>
-    
-    <!-- Последние сделки -->
-    <div class="card">
-        <h3 style="margin-bottom: 15px;">📋 Последние сделки сегодня</h3>
-        {f'''
-        <table>
-            <tr>
-                <th>Время</th>
-                <th>Тип</th>
-                <th>Цена</th>
-                <th>P&L</th>
-            </tr>
-            {''.join(f'''
-            <tr>
-                <td>{t.get("время", "")}</td>
-                <td>{t.get("сигнал", "")}</td>
-                <td>${t.get("цена", 0):.2f}</td>
-                <td style="color: {'var(--green)' if t.get("pnl", 0) > 0 else 'var(--red)'};">
-                    ${t.get("pnl", 0):.2f}
-                </td>
-            </tr>
-            ''' for t in сделки_сегодня[-10:])}
-        </table>
-        ''' if сделки_сегодня else '<p style="color: var(--sub);">Нет сделок за сегодня</p>'}
-    </div>
-    """, "Дашборд")
-
+        pt, ct, cc = "4,735.93", "+0.55%", ""
+        price_data = {"current":4735.93}
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    trades = [t for t in load_trades() if t.get("user")==session["user"] and t.get("date")==today]
+    pnl = sum(t.get("pnl",0) for t in trades)
+    prot = load_protection()
+    ok, _ = check_protection()
+    return render_page(f"""<div class="card"><div style="display:flex;justify-content:space-between;"><div><h2>💰 XAUUSD: ${pt}</h2><span style="color:{'var(--green)' if cc=='' else 'var(--red)'};">{ct}</span></div><div style="text-align:right;"><div>Баланс: <strong>${u['balance']:.2f}</strong></div><div>Сделок: {len(trades)}/{MAX_DAILY_TRADES}</div><div>P&L: <span style="color:{'var(--green)' if pnl>=0 else 'var(--red)'};">${pnl:.2f}</span></div></div></div></div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;"><form method="POST" action="/trade"><input type="hidden" name="side" value="BUY"><input type="hidden" name="price" value="{price_data['current']}"><button class="btn btn-green" style="width:100%;">🟢 BUY</button></form><form method="POST" action="/trade"><input type="hidden" name="side" value="SELL"><input type="hidden" name="price" value="{price_data['current']}"><button class="btn btn-red" style="width:100%;">🔴 SELL</button></form></div>
+    <div class="protection-bar {'blocked' if not ok else ''}"><span>🛡 Защита: {'✅ Активна' if ok else '⚠️ Пауза'}</span><span>P&L дня: <strong>${prot['daily_pnl']:.2f}</strong></span></div>
+    <div class="card" style="height:400px;padding:0;overflow:hidden;"><iframe src="https://s.tradingview.com/widgetembed/?symbol=XAUUSD&interval=5&theme=dark&style=1&timezone=Europe%2FMoscow&locale=ru" style="width:100%;height:100%;border:none;"></iframe></div>
+    <div class="card"><h3>📋 8 Правил входа</h3><div class="grid-2"><div>✅ ATR $10–25</div><div>✅ Без важных новостей</div><div>✅ H4 и H1 в одну сторону</div><div>✅ Не первые 30 мин</div><div>✅ До EMA20 < $6.5</div><div>✅ ИИ уверенность >70%</div><div>✅ RSI >48 (BUY) / <52 (SELL)</div><div>✅ Риск ≤7% от $200</div></div><p style="margin-top:8px;font-size:.8em;color:var(--sub);">⚠️ Гибкость: RSI не совпал, но 7/8 правил — вход</p></div>""","Дашборд")
 
 @app.route("/trade", methods=["POST"])
-@вход_требуется
-def совершить_сделку():
-    """Обработка нажатия кнопки BUY/SELL"""
-    сторона = request.form.get("side", "BUY")
-    цена = float(request.form.get("price", 4700))
-    
-    # Генерируем случайный P&L (в реальности — от MT5)
-    прибыль = round(random.uniform(-14, 21), 2)
-    
-    сегодня = datetime.utcnow().strftime("%Y-%m-%d")
-    сейчас = datetime.utcnow().strftime("%H:%M:%S")
-    
-    # Сохраняем сделку
-    сделка = {
-        "юзер": session["юзер"],
-        "время": сейчас,
-        "дата": сегодня,
-        "сигнал": сторона,
-        "цена": цена,
-        "pnl": прибыль
-    }
-    
-    все_сделки = загрузить_сделки()
-    все_сделки.append(сделка)
-    сохранить_сделки(все_сделки)
-    
-    # Обновляем баланс
-    пользователи = загрузить_пользователей()
-    пользователи[session["юзер"]]["баланс"] += прибыль
-    сохранить_пользователей(пользователи)
-    
-    # Регистрируем в защите
-    исход = "win" if прибыль > 0 else "loss"
-    зарегистрировать_сделку_в_защите(исход, прибыль)
-    
-    logger.info(f"Сделка: {сторона} @ ${цена:.2f} | P&L: ${прибыль:.2f} | {session['юзер']}")
-    
+@login_required
+def trade():
+    side = request.form.get("side","BUY")
+    price = float(request.form.get("price",4700))
+    pnl = round(random.uniform(-14,21),2)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    t = {"user":session["user"],"time":datetime.utcnow().strftime("%H:%M:%S"),"date":today,"side":side,"price":price,"pnl":pnl}
+    tr = load_trades(); tr.append(t); save_trades(tr)
+    users = load_users(); users[session["user"]]["balance"] += pnl; save_users(users)
+    register_trade_protection("win" if pnl > 0 else "loss")
     return redirect("/dashboard")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ДЕПОЗИТ
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.route("/deposit", methods=["GET", "POST"])
-@вход_требуется
-def страница_депозита():
-    """Страница пополнения счёта"""
-    пользователь = получить_текущего_пользователя()
-    депозиты = [d for d in загрузить_депозиты() if d.get("юзер") == session["юзер"]]
-    сообщение = ""
-    
+@app.route("/deposit", methods=["GET","POST"])
+@login_required
+def deposit():
+    u = get_user()
+    deps = [d for d in load_deposits() if d.get("user")==session["user"]]
+    msg = ""
     if request.method == "POST":
-        try:
-            сумма = float(request.form.get("amount", 0))
-        except ValueError:
-            сумма = 0
-        
-        if сумма < 10:
-            сообщение = '<div class="alert alert-error">Минимальная сумма пополнения: $10</div>'
+        amt = float(request.form.get("amount",0))
+        if amt < 10: msg = '<div class="alert alert-error">Минимум $10</div>'
         else:
-            # Создаём заявку на депозит
-            депозит = {
-                "юзер": session["юзер"],
-                "сумма": сумма,
-                "статус": "Ожидает оплаты",
-                "дата": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-            }
-            
-            все_депозиты = загрузить_депозиты()
-            все_депозиты.append(депозит)
-            сохранить_депозиты(все_депозиты)
-            
-            # Уведомляем админов
-            уведомить_администраторов(
-                f"💰 *Новый депозит!*\n\n"
-                f"Пользователь: {session['юзер']}\n"
-                f"Сумма: ${сумма:.2f}\n\n"
-                f"Проверьте поступление на:\n"
-                f"Bybit UID: {MY_BYBIT_UID}\n"
-                f"TRC20: {MY_USDT_ADDRESS[:25]}..."
-            )
-            
-            сообщение = f"""
-            <div class="alert alert-info">
-                <strong>✅ Заявка #{len(все_депозиты)} создана!</strong><br><br>
-                
-                <p><strong>Для пополнения:</strong></p>
-                <ol>
-                    <li>Отправьте <strong>${сумма:.2f} USDT</strong> через TRC20</li>
-                    <li>На адрес: <code style="font-size: 0.8em;">{MY_USDT_ADDRESS}</code></li>
-                    <li>Или на Bybit UID: <strong>{MY_BYBIT_UID}</strong></li>
-                    <li>После отправки администратор проверит и зачислит средства</li>
-                </ol>
-                
-                <p style="margin-top: 10px; font-size: 0.85em;">
-                    ⏱️ Обычно зачисление происходит в течение 1 часа
-                </p>
-            </div>
-            """
-    
-    return отрисовать_страницу(f"""
-    <div class="card" style="max-width: 500px; margin: 0 auto;">
-        <h2>💰 Пополнение счёта</h2>
-        <p style="margin-bottom: 15px;">
-            Текущий баланс: <strong>${пользователь['баланс']:.2f}</strong>
-        </p>
-        
-        {сообщение}
-        
-        <form method="POST">
-            <label>Сумма пополнения ($):</label>
-            <input type="number" name="amount" min="10" step="1" placeholder="Минимум $10" required>
-            
-            <button type="submit" class="btn btn-gold" style="width: 100%;">
-                💰 Создать заявку на пополнение
-            </button>
-        </form>
-        
-        <p style="margin-top: 10px; font-size: 0.8em; color: var(--sub);">
-            💡 Все платежи поступают напрямую на Bybit UID: {MY_BYBIT_UID}
-        </p>
-        
-        <h3 style="margin-top: 20px;">📋 История пополнений</h3>
-        {f'''
-        <table>
-            <tr><th>Дата</th><th>Сумма</th><th>Статус</th></tr>
-            {''.join(f'''
-            <tr>
-                <td>{d.get("дата", "")}</td>
-                <td>${d.get("сумма", 0):.2f}</td>
-                <td>{d.get("статус", "")}</td>
-            </tr>
-            ''' for d in депозиты[-10:])}
-        </table>
-        ''' if депозиты else '<p style="color: var(--sub);">Нет пополнений</p>'}
-    </div>
-    """, "Депозит")
+            d = {"user":session["user"],"amount":amt,"status":"Ожидает","date":datetime.utcnow().strftime("%Y-%m-%d %H:%M")}
+            ad = load_deposits(); ad.append(d); save_deposits(ad)
+            notify_admins(f"💰 Депозит ${amt} от {session['user']}\nПроверьте Bybit UID {MY_BYBIT_UID}")
+            msg = f'<div class="alert alert-info">✅ Заявка на ${amt} создана!<br>Отправьте USDT на Bybit UID: <strong>{MY_BYBIT_UID}</strong><br>TRC20: <code>{MY_USDT_ADDRESS[:25]}...</code></div>'
+    return render_page(f"""<div class="card" style="max-width:500px;margin:0 auto;"><h2>💰 Депозит</h2><p>Баланс: <strong>${u['balance']:.2f}</strong></p>{msg}
+    <form method="POST"><input type="number" name="amount" min="10" placeholder="Сумма $" required><button class="btn btn-gold" style="width:100%;">Создать заявку</button></form>
+    <p style="font-size:.8em;color:var(--sub);">💡 Деньги на Bybit UID {MY_BYBIT_UID}</p>
+    <h3>📋 История</h3><table><tr><th>Дата</th><th>Сумма</th><th>Статус</th></tr>{''.join(f'<tr><td>{d.get("date","")}</td><td>${d.get("amount",0)}</td><td>{d.get("status","")}</td></tr>' for d in deps[-10:])}</table></div>""","Депозит")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ВЫВОД СРЕДСТВ
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.route("/withdraw", methods=["GET", "POST"])
-@вход_требуется
-def страница_вывода():
-    """Страница вывода средств"""
-    пользователь = получить_текущего_пользователя()
-    выводы = [w for w in загрузить_выводы() if w.get("юзер") == session["юзер"]]
-    сообщение = ""
-    
+@app.route("/withdraw", methods=["GET","POST"])
+@login_required
+def withdraw():
+    u = get_user()
+    ws = [w for w in load_withdrawals() if w.get("user")==session["user"]]
+    msg = ""
     if request.method == "POST":
-        try:
-            сумма = float(request.form.get("amount", 0))
-        except ValueError:
-            сумма = 0
-        
-        метод = request.form.get("method", "bybit")
-        кошелёк = request.form.get("wallet", "").strip()
-        
-        # Валидация
-        if сумма < 10:
-            сообщение = '<div class="alert alert-error">Минимальная сумма вывода: $10</div>'
-        elif сумма > пользователь['баланс']:
-            сообщение = '<div class="alert alert-error">Недостаточно средств на балансе</div>'
-        elif not кошелёк:
-            сообщение = '<div class="alert alert-error">Укажите кошелёк для получения</div>'
+        amt = float(request.form.get("amount",0))
+        meth = request.form.get("method","bybit")
+        wal = request.form.get("wallet","")
+        if amt < 10: msg = '<div class="alert alert-error">Минимум $10</div>'
+        elif amt > u['balance']: msg = '<div class="alert alert-error">Недостаточно средств</div>'
         else:
-            # Создаём заявку на вывод
-            вывод = {
-                "юзер": session["юзер"],
-                "сумма": сумма,
-                "метод": метод,
-                "кошелёк": кошелёк,
-                "статус": "Ожидает обработки",
-                "дата": datetime.utcnow().strftime("%Y-%m-%d %H:%M")
-            }
-            
-            все_выводы = загрузить_выводы()
-            все_выводы.append(вывод)
-            сохранить_выводы(все_выводы)
-            
-            # Уведомляем админов
-            уведомить_администраторов(
-                f"💸 *Заявка на вывод!*\n\n"
-                f"Пользователь: {session['юзер']}\n"
-                f"Сумма: ${сумма:.2f}\n"
-                f"Метод: {метод}\n"
-                f"Кошелёк: {кошелёк}\n\n"
-                f"Отправьте средства и подтвердите в админ-панели"
-            )
-            
-            сообщение = f"""
-            <div class="alert alert-info">
-                <strong>✅ Заявка на вывод создана!</strong><br>
-                Сумма: ${сумма:.2f}<br>
-                Метод: {метод}<br><br>
-                Администратор обработает заявку в течение 24 часов.
-            </div>
-            """
-    
-    return отрисовать_страницу(f"""
-    <div class="card" style="max-width: 500px; margin: 0 auto;">
-        <h2>💸 Вывод средств</h2>
-        <p style="margin-bottom: 15px;">
-            Доступно для вывода: <strong>${пользователь['баланс']:.2f}</strong>
-        </p>
-        
-        {сообщение}
-        
-        <form method="POST">
-            <label>Сумма ($):</label>
-            <input type="number" name="amount" min="10" step="1" placeholder="Минимум $10" required>
-            
-            <label>Способ получения:</label>
-            <select name="method">
-                <option value="bybit">Bybit (USDT TRC20)</option>
-                <option value="card">Банковская карта</option>
-            </select>
-            
-            <label>Реквизиты (Bybit UID или номер карты):</label>
-            <input type="text" name="wallet" placeholder="495132302 или 2200xxxxxxxxxxxx" required>
-            
-            <button type="submit" class="btn btn-gold" style="width: 100%;">
-                💸 Заказать вывод
-            </button>
-        </form>
-        
-        <h3 style="margin-top: 20px;">📋 История выводов</h3>
-        {f'''
-        <table>
-            <tr><th>Дата</th><th>Сумма</th><th>Метод</th><th>Статус</th></tr>
-            {''.join(f'''
-            <tr>
-                <td>{w.get("дата", "")}</td>
-                <td>${w.get("сумма", 0):.2f}</td>
-                <td>{w.get("метод", "")}</td>
-                <td>{w.get("статус", "")}</td>
-            </tr>
-            ''' for w in выводы[-10:])}
-        </table>
-        ''' if выводы else '<p style="color: var(--sub);">Нет операций вывода</p>'}
-    </div>
-    """, "Вывод")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ИСТОРИЯ СДЕЛОК
-# ══════════════════════════════════════════════════════════════════════════════
+            w = {"user":session["user"],"amount":amt,"method":meth,"wallet":wal,"status":"Ожидает","date":datetime.utcnow().strftime("%Y-%m-%d %H:%M")}
+            aw = load_withdrawals(); aw.append(w); save_withdrawals(aw)
+            notify_admins(f"💸 Вывод ${amt} от {session['user']}\nМетод: {meth}\nКошелёк: {wal}")
+            msg = f'<div class="alert alert-info">✅ Заявка на вывод ${amt} создана!</div>'
+    return render_page(f"""<div class="card" style="max-width:500px;margin:0 auto;"><h2>💸 Вывод</h2><p>Баланс: <strong>${u['balance']:.2f}</strong></p>{msg}
+    <form method="POST"><input type="number" name="amount" min="10" placeholder="Сумма $" required><select name="method"><option value="bybit">Bybit USDT</option><option value="card">Карта</option></select><input type="text" name="wallet" placeholder="Bybit UID или карта" required><button class="btn btn-gold" style="width:100%;">Заказать вывод</button></form>
+    <h3>📋 История</h3><table><tr><th>Дата</th><th>Сумма</th><th>Статус</th></tr>{''.join(f'<tr><td>{w.get("date","")}</td><td>${w.get("amount",0)}</td><td>{w.get("status","")}</td></tr>' for w in ws[-10:])}</table></div>""","Вывод")
 
 @app.route("/history")
-@вход_требуется
-def история_сделок():
-    """Страница с историей всех сделок пользователя"""
-    все_сделки = [
-        t for t in загрузить_сделки()
-        if t.get("юзер") == session["юзер"]
-    ]
-    
-    # Сортируем по времени (новые сверху)
-    все_сделки.sort(key=lambda x: x.get("время", ""), reverse=True)
-    
-    # Считаем статистику
-    всего = len(все_сделки)
-    победы = sum(1 for t in все_сделки if t.get("pnl", 0) > 0)
-    поражения = sum(1 for t in все_сделки if t.get("pnl", 0) < 0)
-    винрейт = round(победы / всего * 100) if всего > 0 else 0
-    общий_pnl = sum(t.get("pnl", 0) for t in все_сделки)
-    
-    return отрисовать_страницу(f"""
-    <!-- Статистика -->
-    <div class="card">
-        <h2>📊 Статистика торговли</h2>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 15px;">
-            <div style="text-align: center;">
-                <div style="font-size: 1.5em; font-weight: 700;">{всего}</div>
-                <div style="color: var(--sub); font-size: 0.8em;">Всего сделок</div>
-            </div>
-            <div style="text-align: center;">
-                <div style="font-size: 1.5em; font-weight: 700; color: var(--green);">{победы}</div>
-                <div style="color: var(--sub); font-size: 0.8em;">Прибыльных</div>
-            </div>
-            <div style="text-align: center;">
-                <div style="font-size: 1.5em; font-weight: 700; color: var(--red);">{поражения}</div>
-                <div style="color: var(--sub); font-size: 0.8em;">Убыточных</div>
-            </div>
-            <div style="text-align: center;">
-                <div style="font-size: 1.5em; font-weight: 700;">{винрейт}%</div>
-                <div style="color: var(--sub); font-size: 0.8em;">Винрейт</div>
-            </div>
-        </div>
-        <p style="margin-top: 15px; text-align: center;">
-            Общий P&L: 
-            <strong style="color: {'var(--green)' if общий_pnl >= 0 else 'var(--red)'};">
-                ${общий_pnl:.2f}
-            </strong>
-        </p>
-    </div>
-    
-    <!-- Таблица сделок -->
-    <div class="card">
-        <h2>📋 История сделок</h2>
-        {f'''
-        <table>
-            <tr>
-                <th>Дата</th>
-                <th>Время</th>
-                <th>Тип</th>
-                <th>Цена</th>
-                <th>P&L</th>
-                <th>Результат</th>
-            </tr>
-            {''.join(f'''
-            <tr>
-                <td>{t.get("дата", "")}</td>
-                <td>{t.get("время", "")}</td>
-                <td>{t.get("сигнал", "")}</td>
-                <td>${t.get("цена", 0):.2f}</td>
-                <td style="color: {'var(--green)' if t.get("pnl", 0) > 0 else 'var(--red)'};">
-                    ${t.get("pnl", 0):.2f}
-                </td>
-                <td>{'✅ Прибыль' if t.get("pnl", 0) > 0 else '❌ Убыток'}</td>
-            </tr>
-            ''' for t in все_сделки[:100])}
-        </table>
-        ''' if все_сделки else '<p style="color: var(--sub);">История сделок пуста</p>'}
-    </div>
-    """, "История сделок")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ПОДПИСКА
-# ══════════════════════════════════════════════════════════════════════════════
+@login_required
+def history():
+    tr = sorted([t for t in load_trades() if t.get("user")==session["user"]], key=lambda x: x.get("time",""), reverse=True)
+    total = len(tr)
+    wins = sum(1 for t in tr if t.get("pnl",0) > 0)
+    wr = round(wins/total*100) if total > 0 else 0
+    return render_page(f"""<div class="card"><h2>📋 История</h2><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;text-align:center;margin-bottom:20px;"><div><div style="font-size:1.5em;font-weight:700;">{total}</div><div style="color:var(--sub);">Всего</div></div><div><div style="font-size:1.5em;font-weight:700;color:var(--green);">{wins}</div><div style="color:var(--sub);">Прибыльных</div></div><div><div style="font-size:1.5em;font-weight:700;">{wr}%</div><div style="color:var(--sub);">Винрейт</div></div></div>
+    <table><tr><th>Время</th><th>Тип</th><th>Цена</th><th>P&L</th></tr>{''.join(f'<tr><td>{t.get("time","")}</td><td>{t.get("side","")}</td><td>${t.get("price",0):.2f}</td><td style="color:{"var(--green)" if t.get("pnl",0)>0 else "var(--red)"};">${t.get("pnl",0):.2f}</td></tr>' for t in tr[:50])}</table></div>""","История")
 
 @app.route("/subscription")
-@вход_требуется
-def страница_подписки():
-    """Страница управления подпиской"""
-    тип = получить_тип_подписки()
-    
-    return отрисовать_страницу(f"""
-    <h2>🛡 Управление подпиской</h2>
-    <p style="margin-bottom: 20px; color: var(--sub);">
-        Текущий тариф: <strong>{тип.upper()}</strong>
-    </p>
-    
-    <div class="grid-2">
-        <!-- FREE -->
-        <div class="pricing-card {'active' if тип == 'free' else ''}">
-            <h3>⭐ FREE</h3>
-            <div class="price">$0</div>
-            <p style="color: var(--sub);">Бесплатно навсегда</p>
-            <ul>
-                <li>✅ AI Чат: 25 сообщений/день</li>
-                <li>✅ Ручная торговля</li>
-                <li>✅ Депозит и вывод</li>
-                <li>✅ График TradingView</li>
-                <li>✅ История сделок</li>
-                <li>✅ MT5 подключение</li>
-                <li>❌ Авто-трейдинг</li>
-                <li>❌ Смена темы</li>
-                <li>❌ Приватный Telegram бот</li>
-            </ul>
-            {f'<div class="alert alert-info">Текущий тариф</div>' if тип == 'free' else ''}
-        </div>
-        
-        <!-- VIP -->
-        <div class="pricing-card {'active' if тип == 'vip' else ''}">
-            <h3>👑 VIP</h3>
-            <div class="price">
-                ${VIP_PRICE_USD}
-                <span style="font-size: 0.4em; color: var(--sub);">/месяц</span>
-            </div>
-            <ul>
-                <li>✅ AI Чат: БЕЗЛИМИТ</li>
-                <li>✅ Авто-трейдинг 24/7</li>
-                <li>✅ Депозит и вывод</li>
-                <li>✅ График TradingView</li>
-                <li>✅ История сделок</li>
-                <li>✅ MT5 авто + ручное</li>
-                <li>✅ Смена темы (тёмная/светлая)</li>
-                <li>✅ Приватный Telegram бот</li>
-                <li>✅ Авто-стопы защиты</li>
-            </ul>
-            
-            {f'<div class="alert alert-success">Активен до ...</div>' if тип == 'vip' else f'''
-            <div style="margin-top: 15px;">
-                <p style="font-size: 0.9em; margin-bottom: 10px;">
-                    <strong>Для оплаты:</strong><br>
-                    1. Отправьте ${VIP_PRICE_USD} USDT на Bybit UID: <strong>{MY_BYBIT_UID}</strong><br>
-                    2. Нажмите кнопку ниже
-                </p>
-                <a href="/vip-activate" class="btn btn-gold" style="width: 100%;">
-                    ✅ Я оплатил — активировать VIP
-                </a>
-            </div>
-            '''}
-        </div>
-    </div>
-    
-    <div class="card" style="margin-top: 20px;">
-        <h3>💳 Информация об оплате</h3>
-        <p>Все платежи принимаются в USDT (TRC20) через Bybit.</p>
-        <p>
-            <strong>Bybit UID:</strong> {MY_BYBIT_UID}<br>
-            <strong>TRC20 адрес:</strong> <code style="font-size: 0.8em;">{MY_USDT_ADDRESS}</code>
-        </p>
-        <p style="margin-top: 10px; font-size: 0.8em; color: var(--sub);">
-            После оплаты администратор активирует VIP в течение 1 часа.
-            Вы получите уведомление на email.
-        </p>
-    </div>
-    """, "Подписка")
-
+@login_required
+def subscription():
+    sub = get_sub()
+    return render_page(f"""<div class="grid-2">
+    <div class="pricing-card {'active' if sub=='free' else ''}"><h3>⭐ FREE</h3><div class="price">$0</div><ul><li>✅ AI: 25/день</li><li>✅ Ручная торговля</li><li>✅ Депозит/Вывод</li><li>✅ График</li><li>❌ Автотрейдинг</li><li>❌ Смена темы</li></ul>{'<div class="alert alert-info">Текущий</div>' if sub=='free' else ''}</div>
+    <div class="pricing-card {'active' if sub=='vip' else ''}"><h3>👑 VIP</h3><div class="price">$20<span style="font-size:.4em;">/мес</span></div><ul><li>✅ AI: безлимит</li><li>✅ Автотрейдинг</li><li>✅ Смена темы</li><li>✅ Telegram бот</li></ul>{'<div class="alert alert-success">Активен</div>' if sub=='vip' else f'<p style="margin:20px 0;"><strong>Оплатите $20 на Bybit UID: {MY_BYBIT_UID}</strong></p><a href="/vip-activate" class="btn btn-gold" style="width:100%;">✅ Я оплатил</a>'}</div></div>""","Подписка")
 
 @app.route("/vip-activate")
-@вход_требуется
-def активировать_vip():
-    """Запрос на активацию VIP после оплаты"""
-    уведомить_администраторов(
-        f"🔔 *Запрос на VIP активацию!*\n\n"
-        f"Пользователь: {session['юзер']}\n"
-        f"Проверьте поступление ${VIP_PRICE_USD} на:\n"
-        f"Bybit UID: {MY_BYBIT_UID}\n"
-        f"И одобрите в админ-панели"
-    )
-    
-    return отрисовать_страницу("""
-    <div class="card" style="text-align: center; max-width: 500px; margin: 50px auto;">
-        <h2>✅ Запрос отправлен!</h2>
-        <p style="margin: 20px 0;">
-            Администратор проверит ваш платёж и активирует VIP подписку.
-        </p>
-        <p style="color: var(--sub);">
-            Обычно это занимает до 1 часа.
-            Вы получите уведомление на email.
-        </p>
-        <a href="/subscription" class="btn btn-gold" style="margin-top: 20px;">
-            ← Вернуться к подписке
-        </a>
-    </div>
-    """, "Активация VIP")
+@login_required
+def vip_activate():
+    notify_admins(f"🔔 Запрос VIP! {session['user']}\nПроверьте Bybit UID {MY_BYBIT_UID}")
+    return render_page('<div class="card" style="text-align:center;"><h2>✅ Запрос отправлен!</h2><p>Админ проверит платёж</p><a href="/subscription" class="btn btn-gold">Назад</a></div>',"VIP")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# AI ЧАТ
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.route("/ai-chat", methods=["GET", "POST"])
-@вход_требуется
-def ai_чат():
-    """Страница общения с AI"""
-    пользователь = получить_текущего_пользователя()
-    тип = получить_тип_подписки()
-    
-    # Проверяем дневной лимит для Free
-    сегодня = datetime.utcnow().strftime("%Y-%m-%d")
-    if пользователь.get("ai_дата") != сегодня:
-        пользователь["ai_счётчик"] = 0
-        пользователь["ai_дата"] = сегодня
-        пользователи = загрузить_пользователей()
-        пользователи[session["юзер"]] = пользователь
-        сохранить_пользователей(пользователи)
-    
-    оставшиеся_сообщения = max(0, MAX_FREE_AI_MESSAGES - пользователь.get("ai_счётчик", 0))
-    
-    ответ_ai = ""
+@app.route("/ai-chat", methods=["GET","POST"])
+@login_required
+def ai_chat():
+    u = get_user()
+    sub = get_sub()
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if u.get("ai_date") != today: u["ai_count"] = 0; u["ai_date"] = today
+    users = load_users(); users[session["user"]] = u; save_users(users)
+    rem = max(0, MAX_FREE_AI_MESSAGES - u.get("ai_count",0))
+    reply = ""
     if request.method == "POST":
-        вопрос = request.form.get("message", "").strip()
-        
-        if not вопрос:
-            ответ_ai = "Пожалуйста, введите вопрос."
-        elif тип == "free" and пользователь.get("ai_счётчик", 0) >= MAX_FREE_AI_MESSAGES:
-            ответ_ai = (
-                "⚠️ Дневной лимит сообщений исчерпан (25/день).\n"
-                "Перейдите на VIP для безлимитного доступа к AI!"
-            )
+        if sub == "free" and u.get("ai_count",0) >= MAX_FREE_AI_MESSAGES:
+            reply = "⚠️ Лимит 25/день. Нужен VIP!"
         else:
-            # Увеличиваем счётчик
-            пользователь["ai_счётчик"] = пользователь.get("ai_счётчик", 0) + 1
-            пользователи = загрузить_пользователей()
-            пользователи[session["юзер"]] = пользователь
-            сохранить_пользователей(пользователи)
-            
-            # Отправляем запрос к DeepSeek
-            ответ, ошибка = задать_вопрос_deepseek(вопрос)
-            
-            if ошибка:
-                ответ_ai = f"⚠️ {ошибка}"
-            else:
-                ответ_ai = ответ
-    
-    return отрисовать_страницу(f"""
-    <div class="card" style="max-width: 700px; margin: 0 auto;">
-        <h2>🤖 AI Чат (DeepSeek)</h2>
-        
-        {f'<div class="alert alert-info">Осталось сообщений сегодня: <strong>{оставшиеся_сообщения}/{MAX_FREE_AI_MESSAGES}</strong></div>' if тип == 'free' else '<div class="alert alert-success">VIP — безлимитный доступ к AI</div>'}
-        
-        <form method="POST">
-            <label>Ваш вопрос:</label>
-            <textarea name="message" rows="3" placeholder="Спросите о рынке, стратегии, аналитике..." required></textarea>
-            
-            <button type="submit" class="btn btn-gold" style="width: 100%;">
-                🤖 Спросить AI
-            </button>
-        </form>
-        
-        {f'''
-        <div class="card" style="margin-top: 20px; background: rgba(210, 153, 29, 0.05);">
-            <strong>🧠 DeepSeek:</strong>
-            <p style="margin-top: 10px; white-space: pre-wrap;">{ответ_ai}</p>
-        </div>
-        ''' if ответ_ai else ''}
-    </div>
-    """, "AI Чат")
+            u["ai_count"] = u.get("ai_count",0) + 1
+            users = load_users(); users[session["user"]] = u; save_users(users)
+            ans, err = deepseek_ask(request.form.get("message","Привет"))
+            reply = ans if ans else f"⚠️ {err}"
+    return render_page(f"""<div class="card" style="max-width:600px;margin:0 auto;"><h2>🤖 AI Чат</h2>{'<div class="alert alert-info">Осталось: '+str(rem)+'/{MAX_FREE_AI_MESSAGES}</div>' if sub=='free' else '<div class="alert alert-success">VIP безлимит</div>'}<form method="POST"><input type="text" name="message" placeholder="Вопрос..." required><button class="btn btn-gold" style="width:100%;">Спросить</button></form>{f'<div class="card" style="margin-top:15px;"><strong>AI:</strong> {reply}</div>' if reply else ''}</div>""","AI Чат")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# НАСТРОЙКИ
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.route("/settings", methods=["GET", "POST"])
-@вход_требуется
-def страница_настроек():
-    """Страница настроек пользователя"""
-    пользователь = получить_текущего_пользователя()
-    тип = получить_тип_подписки()
-    
-    # Загружаем конфигурацию MT5
-    конфиг_mt5 = загрузить_mt5().get(session["юзер"], {
-        "сервер": "",
-        "логин": "",
-        "пароль": ""
-    })
-    
-    сообщение = ""
-    
+@app.route("/settings", methods=["GET","POST"])
+@login_required
+def settings():
+    u = get_user()
+    sub = get_sub()
+    mt5 = load_mt5().get(session["user"], {"server":"","login":"","password":""})
+    msg = ""
     if request.method == "POST":
-        действие = request.form.get("action", "")
-        
-        if действие == "save_mt5":
-            конфиг_mt5 = {
-                "сервер": request.form.get("mt5_server", ""),
-                "логин": request.form.get("mt5_login", ""),
-                "пароль": request.form.get("mt5_password", "")
-            }
-            все_mt5 = загрузить_mt5()
-            все_mt5[session["юзер"]] = конфиг_mt5
-            сохранить_mt5(все_mt5)
-            сообщение = '<div class="alert alert-success">✅ Настройки MT5 сохранены!</div>'
-        
-        elif действие == "save_theme" and тип in ("vip", "admin"):
-            новая_тема = request.form.get("theme", "dark")
-            пользователи = загрузить_пользователей()
-            пользователи[session["юзер"]]["тема"] = новая_тема
-            сохранить_пользователей(пользователи)
-            сообщение = f'<div class="alert alert-success">✅ Тема изменена на {новую_тему}!</div>'
-    
-    return отрисовать_страницу(f"""
-    {сообщение}
-    
-    <!-- Настройки MT5 -->
-    <div class="card" style="max-width: 600px; margin: 0 auto 16px;">
-        <h2>🔌 MetaTrader 5</h2>
-        <p style="color: var(--sub); margin-bottom: 15px;">
-            Подключение к вашему торговому счёту MT5
-        </p>
-        
-        <form method="POST">
-            <input type="hidden" name="action" value="save_mt5">
-            
-            <label>Сервер MT5:</label>
-            <input type="text" name="mt5_server" value="{конфиг_mt5.get('сервер', '')}" 
-                   placeholder="Например: ICMarkets-Demo">
-            
-            <label>Логин:</label>
-            <input type="text" name="mt5_login" value="{конфиг_mt5.get('логин', '')}" 
-                   placeholder="Номер счёта">
-            
-            <label>Пароль:</label>
-            <input type="password" name="mt5_password" placeholder="Пароль MT5">
-            
-            <button type="submit" class="btn btn-gold" style="width: 100%;">
-                💾 Сохранить настройки MT5
-            </button>
-        </form>
-    </div>
-    
-    <!-- Настройки темы -->
-    <div class="card" style="max-width: 600px; margin: 0 auto;">
-        <h2>🎨 Оформление</h2>
-        
-        {f'''
-        <form method="POST">
-            <input type="hidden" name="action" value="save_theme">
-            <label>Тема интерфейса:</label>
-            <select name="theme">
-                <option value="dark" {"selected" if пользователь.get("тема") == "dark" else ""}>
-                    🌙 Тёмная
-                </option>
-                <option value="light" {"selected" if пользователь.get("тема") == "light" else ""}>
-                    ☀️ Светлая
-                </option>
-            </select>
-            <button type="submit" class="btn btn-gold" style="width: 100%;">
-                💾 Применить тему
-            </button>
-        </form>
-        ''' if тип in ("vip", "admin") else '''
-        <p style="color: var(--sub);">
-            🔒 Смена темы доступна только для VIP пользователей.
-            <a href="/subscription" style="color: var(--gold);">Оформить VIP →</a>
-        </p>
-        '''}
-    </div>
-    """, "Настройки")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ПОДДЕРЖКА
-# ══════════════════════════════════════════════════════════════════════════════
+        action = request.form.get("action","")
+        if action == "mt5":
+            mt5 = {"server":request.form.get("server",""),"login":request.form.get("login",""),"password":request.form.get("password","")}
+            all_mt5 = load_mt5(); all_mt5[session["user"]] = mt5; save_mt5(all_mt5)
+            msg = '<div class="alert alert-success">MT5 сохранён!</div>'
+        elif action == "theme" and sub in ("vip","admin"):
+            users = load_users(); users[session["user"]]["theme"] = request.form.get("theme","dark"); save_users(users)
+            msg = '<div class="alert alert-success">Тема изменена!</div>'
+    return render_page(f"""<div class="card" style="max-width:500px;margin:0 auto;"><h2>⚙️ Настройки</h2>{msg}
+    <h3>🔌 MetaTrader 5</h3><form method="POST"><input type="hidden" name="action" value="mt5"><input type="text" name="server" value="{mt5.get('server','')}" placeholder="Сервер"><input type="text" name="login" value="{mt5.get('login','')}" placeholder="Логин"><input type="password" name="password" placeholder="Пароль"><button class="btn btn-gold" style="width:100%;">Сохранить MT5</button></form>
+    {f'<h3 style="margin-top:20px;">🎨 Тема</h3><form method="POST"><input type="hidden" name="action" value="theme"><select name="theme"><option value="dark" {"selected" if u.get("theme")=="dark" else ""}>🌙 Тёмная</option><option value="light" {"selected" if u.get("theme")=="light" else ""}>☀️ Светлая</option></select><button class="btn btn-gold" style="width:100%;">Сохранить</button></form>' if sub in ("vip","admin") else '<p>🎨 Тема — VIP</p>'}
+    </div>""","Настройки")
 
 @app.route("/support")
-@вход_требуется
-def страница_поддержки():
-    """Страница поддержки"""
-    return отрисовать_страницу("""
-    <div class="card" style="max-width: 600px; margin: 0 auto;">
-        <h2>🆘 Поддержка</h2>
-        <p style="margin-bottom: 20px;">
-            Если у вас возникли вопросы или проблемы, свяжитесь с нами:
-        </p>
-        
-        <div style="display: grid; gap: 15px;">
-            <div class="card" style="margin: 0;">
-                <strong>📧 Email:</strong>
-                <p>support@xau-ai.com</p>
-                <p style="color: var(--sub); font-size: 0.8em;">Время ответа: до 24 часов</p>
-            </div>
-            
-            <div class="card" style="margin: 0;">
-                <strong>💬 Telegram:</strong>
-                <p>@xau_support</p>
-                <p style="color: var(--sub); font-size: 0.8em;">Время ответа: до 1 часа</p>
-            </div>
-            
-            <div class="card" style="margin: 0;">
-                <strong>⏰ Режим работы:</strong>
-                <p>24/7<br>Без выходных</p>
-            </div>
-            
-            <div class="card" style="margin: 0;">
-                <strong>❗ Частые вопросы:</strong>
-                <ul style="margin-top: 5px; padding-left: 20px;">
-                    <li>Депозит зачисляется в течение 1 часа</li>
-                    <li>Вывод обрабатывается до 24 часов</li>
-                    <li>VIP активируется после подтверждения оплаты</li>
-                    <li>MT5 настраивается в разделе Настройки</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    """, "Поддержка")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# АДМИН-ПАНЕЛЬ
-# ══════════════════════════════════════════════════════════════════════════════
+@login_required
+def support():
+    return render_page('<div class="card" style="max-width:500px;margin:0 auto;"><h2>🆘 Поддержка</h2><p>📧 support@xau-ai.com</p><p>💬 @xau_support</p><p>⏰ 24/7</p></div>',"Поддержка")
 
 @app.route("/admin")
-@админ_требуется
-def админ_панель():
-    """Административная панель управления"""
-    пользователи = загрузить_пользователей()
-    депозиты = загрузить_депозиты()
-    выводы = загрузить_выводы()
-    
-    ожидающие_депозиты = [d for d in депозиты if "Ожидает" in d.get("статус", "")]
-    ожидающие_выводы = [w for w in выводы if "Ожидает" in w.get("статус", "")]
-    
-    вип_пользователи = sum(1 for u in пользователи.values() if u.get("подписка") == "vip")
-    бесплатные = sum(1 for u in пользователи.values() if u.get("подписка") == "free")
-    админы = sum(1 for u in пользователи.values() if u.get("подписка") == "admin")
-    
-    return отрисовать_страницу(f"""
-    <h2>👑 Административная панель</h2>
-    
-    <!-- Статистика -->
-    <div class="card">
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center;">
-            <div>
-                <div style="font-size: 2em; font-weight: 700;">{len(пользователи)}</div>
-                <div style="color: var(--sub);">Пользователей</div>
-            </div>
-            <div>
-                <div style="font-size: 2em; font-weight: 700; color: var(--gold);">{вип_пользователи}</div>
-                <div style="color: var(--sub);">VIP</div>
-            </div>
-            <div>
-                <div style="font-size: 2em; font-weight: 700;">{бесплатные}</div>
-                <div style="color: var(--sub);">Free</div>
-            </div>
-            <div>
-                <div style="font-size: 2em; font-weight: 700; color: var(--green);">{админы}</div>
-                <div style="color: var(--sub);">Админов</div>
-            </div>
-        </div>
-        <p style="margin-top: 15px;">
-            Ожидают депозит: <strong>{len(ожидающие_депозиты)}</strong> | 
-            Ожидают вывод: <strong>{len(ожидающие_выводы)}</strong>
-        </p>
-        <p>Ваш Bybit UID: <strong>{MY_BYBIT_UID}</strong></p>
-    </div>
-    
-    <!-- Ожидающие депозиты -->
-    <div class="card">
-        <h3>💰 Ожидающие депозиты</h3>
-        {f'''
-        <table>
-            <tr><th>Пользователь</th><th>Сумма</th><th>Дата</th><th>Действие</th></tr>
-            {''.join(f'''
-            <tr>
-                <td>{d["юзер"]}</td>
-                <td>${d["сумма"]:.2f}</td>
-                <td>{d.get("дата", "")}</td>
-                <td>
-                    <a href="/admin/deposit-approve/{d["юзер"]}/{d["сумма"]}" 
-                       class="btn btn-green" style="padding: 5px 10px; font-size: 0.8em;">
-                        ✅ Подтвердить
-                    </a>
-                </td>
-            </tr>
-            ''' for d in ожидающие_депозиты)}
-        </table>
-        ''' if ожидающие_депозиты else '<p style="color: var(--sub);">Нет ожидающих депозитов</p>'}
-    </div>
-    
-    <!-- Ожидающие выводы -->
-    <div class="card">
-        <h3>💸 Ожидающие выводы</h3>
-        {f'''
-        <table>
-            <tr><th>Пользователь</th><th>Сумма</th><th>Метод</th><th>Кошелёк</th><th>Действие</th></tr>
-            {''.join(f'''
-            <tr>
-                <td>{w["юзер"]}</td>
-                <td>${w["сумма"]:.2f}</td>
-                <td>{w.get("метод", "")}</td>
-                <td style="font-size: 0.8em;">{w.get("кошелёк", "")}</td>
-                <td>
-                    <a href="/admin/withdraw-approve/{w["юзер"]}/{w["сумма"]}" 
-                       class="btn btn-green" style="padding: 5px 10px; font-size: 0.8em;">
-                        ✅ Отправлено
-                    </a>
-                </td>
-            </tr>
-            ''' for w in ожидающие_выводы)}
-        </table>
-        ''' if ожидающие_выводы else '<p style="color: var(--sub);">Нет ожидающих выводов</p>'}
-    </div>
-    
-    <!-- Все пользователи -->
-    <div class="card">
-        <h3>👥 Все пользователи</h3>
-        <table>
-            <tr>
-                <th>Email</th>
-                <th>Подписка</th>
-                <th>Баланс</th>
-                <th>Дата регистрации</th>
-                <th>Управление</th>
-            </tr>
-            {''.join(f'''
-            <tr>
-                <td>{email}</td>
-                <td>
-                    <span class="badge badge-{u["подписка"]}">{u["подписка"].upper()}</span>
-                </td>
-                <td>${u.get("баланс", 0):.2f}</td>
-                <td style="font-size: 0.8em;">{u.get("создан", "")[:10]}</td>
-                <td>
-                    {f'<a href="/admin/toggle-sub/{email}" class="btn btn-outline" style="padding: 5px 10px; font-size: 0.8em;">{"В FREE" if u["подписка"] == "vip" else "В VIP"}</a>' if u["подписка"] != "admin" else 'Админ'}
-                </td>
-            </tr>
-            ''' for email, u in пользователи.items())}
-        </table>
-    </div>
-    """, "Админ-панель")
+@admin_required
+def admin():
+    users = load_users()
+    deps = load_deposits()
+    ws = load_withdrawals()
+    pd = [d for d in deps if d.get("status")=="Ожидает"]
+    pw = [w for w in ws if w.get("status")=="Ожидает"]
+    vip = sum(1 for u in users.values() if u.get("sub")=="vip")
+    free = sum(1 for u in users.values() if u.get("sub")=="free")
+    return render_page(f"""<div class="card"><h2>👑 Админ</h2><p>Всего: {len(users)} | VIP: {vip} | Free: {free}</p><p>Депозитов: {len(pd)} | Выводов: {len(pw)}</p><p>Bybit: {MY_BYBIT_UID}</p></div>
+    <div class="card"><h3>💰 Депозиты</h3><table><tr><th>User</th><th>$</th><th></th></tr>{''.join(f'<tr><td>{d["user"]}</td><td>${d["amount"]}</td><td><a href="/admin/dep-ok/{d["user"]}/{d["amount"]}" class="btn btn-green">Ок</a></td></tr>' for d in pd)}</table></div>
+    <div class="card"><h3>💸 Выводы</h3><table><tr><th>User</th><th>$</th><th>Метод</th><th>Кошелёк</th><th></th></tr>{''.join(f'<tr><td>{w["user"]}</td><td>${w["amount"]}</td><td>{w.get("method","")}</td><td>{w.get("wallet","")}</td><td><a href="/admin/wd-ok/{w["user"]}/{w["amount"]}" class="btn btn-green">Отправил</a></td></tr>' for w in pw)}</table></div>
+    <div class="card"><h3>👥 Пользователи</h3><table><tr><th>Email</th><th>Подписка</th><th>Баланс</th><th></th></tr>{''.join(f'<tr><td>{e}</td><td><span class="badge badge-{u["sub"]}">{u["sub"].upper()}</span></td><td>${u.get("balance",0):.2f}</td><td>{f"<a href='/admin/toggle/{e}' class='btn btn-outline'>{'В FREE' if u['sub']=='vip' else 'В VIP'}</a>" if u["sub"]!="admin" else "Админ"}</td></tr>' for e,u in users.items())}</table></div>""","Админ")
 
-
-@app.route("/admin/deposit-approve/<email>/<amount>")
-@админ_требуется
-def подтвердить_депозит(email, amount):
-    """Подтверждение депозита администратором"""
-    пользователи = загрузить_пользователей()
-    if email in пользователи:
-        пользователи[email]["баланс"] += float(amount)
-        сохранить_пользователей(пользователи)
-    
-    # Обновляем статус
-    депозиты = загрузить_депозиты()
-    for d in депозиты:
-        if d.get("юзер") == email and "Ожидает" in d.get("статус", ""):
-            d["статус"] = "Зачислено"
-    сохранить_депозиты(депозиты)
-    
-    logger.info(f"Админ: депозит ${amount} для {email} подтверждён")
-    
-    # Уведомление пользователю (если есть Telegram ID)
-    if email in CHAT_IDS:
-        отправить_в_телеграм(f"✅ Депозит ${amount} зачислен на ваш баланс!", чат_id=email)
-    
+@app.route("/admin/dep-ok/<email>/<amount>")
+@admin_required
+def dep_ok(email, amount):
+    users = load_users()
+    if email in users: users[email]["balance"] += float(amount); save_users(users)
+    deps = load_deposits()
+    for d in deps:
+        if d.get("user")==email and d.get("status")=="Ожидает": d["status"] = "Зачислено"
+    save_deposits(deps)
     return redirect("/admin")
 
-
-@app.route("/admin/withdraw-approve/<email>/<amount>")
-@админ_требуется
-def подтвердить_вывод(email, amount):
-    """Подтверждение вывода администратором"""
-    пользователи = загрузить_пользователей()
-    if email in пользователи:
-        пользователи[email]["баланс"] -= float(amount)
-        сохранить_пользователей(пользователи)
-    
-    # Обновляем статус
-    выводы = загрузить_выводы()
-    for w in выводы:
-        if w.get("юзер") == email and "Ожидает" in w.get("статус", ""):
-            w["статус"] = "Отправлено"
-    сохранить_выводы(выводы)
-    
-    logger.info(f"Админ: вывод ${amount} для {email} подтверждён")
-    
+@app.route("/admin/wd-ok/<email>/<amount>")
+@admin_required
+def wd_ok(email, amount):
+    users = load_users()
+    if email in users: users[email]["balance"] -= float(amount); save_users(users)
+    ws = load_withdrawals()
+    for w in ws:
+        if w.get("user")==email and w.get("status")=="Ожидает": w["status"] = "Отправлено"
+    save_withdrawals(ws)
     return redirect("/admin")
 
-
-@app.route("/admin/toggle-sub/<email>")
-@админ_требуется
-def переключить_подписку(email):
-    """Переключение подписки пользователя (VIP ↔ Free)"""
-    пользователи = загрузить_пользователей()
-    if email in пользователи and пользователи[email].get("подписка") != "admin":
-        текущая = пользователи[email]["подписка"]
-        пользователи[email]["подписка"] = "free" if текущая == "vip" else "vip"
-        сохранить_пользователей(пользователи)
-        logger.info(f"Админ: подписка {email} изменена на {пользователи[email]['подписка']}")
-    
+@app.route("/admin/toggle/<email>")
+@admin_required
+def admin_toggle(email):
+    users = load_users()
+    if email in users and users[email].get("sub")!="admin":
+        users[email]["sub"] = "free" if users[email]["sub"]=="vip" else "vip"
+        save_users(users)
     return redirect("/admin")
 
-
 # ══════════════════════════════════════════════════════════════════════════════
-# API ЭНДПОИНТЫ
-# ══════════════════════════════════════════════════════════════════════════════
-
-@app.route("/api/price")
-def api_цена():
-    """API: текущая цена XAUUSD"""
-    цена = получить_текущую_цену_xau()
-    if цена:
-        return jsonify({"цена": цена["текущая"], "изменение": цена.get("изменение_процент", 0)})
-    return jsonify({"цена": 4735.93, "изменение": 0.55})
-
-
-@app.route("/api/status")
-def api_статус():
-    """API: статус системы"""
-    защита = загрузить_защиту()
-    return jsonify({
-        "сделок_сегодня": защита["сделок_за_день"],
-        "дневной_pnl": защита["дневной_pnl"],
-        "торговля_разрешена": проверить_все_защиты()[0]
-    })
-
-
-@app.route("/ping")
-def health_check():
-    """Проверка работоспособности для Render"""
-    return jsonify({
-        "status": "ok",
-        "time": datetime.utcnow().isoformat(),
-        "version": "3.0.0"
-    })
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# TELEGRAM WEBHOOK
+# TELEGRAM WEBHOOK + КОМАНДЫ
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/telegram/webhook", methods=["POST"])
-def телеграм_вебхук_обработчик():
-    """Обработка входящих сообщений от Telegram"""
-    обновление = request.get_json(silent=True) or {}
-    
+def telegram_webhook():
+    update = request.get_json(silent=True) or {}
     try:
-        if "message" in обновление:
-            сообщение = обновление["message"]
-            текст = (сообщение.get("text") or "").strip()
-            чат_id = сообщение.get("chat", {}).get("id")
-            
-            if текст == "/start":
-                отправить_в_телеграм(
-                    "👋 *Добро пожаловать в XAU AI Trader!*\n\n"
-                    "Доступные команды:\n"
-                    "/price — текущая цена XAUUSD\n"
-                    "/status — статистика\n"
-                    "/ask вопрос — спросить AI\n"
-                    "/buy ЦЕНА RSI ТРЕНД ATR — сигнал BUY\n"
-                    "/sell ЦЕНА RSI ТРЕНД ATR — сигнал SELL",
-                    чат_id=чат_id
-                )
-            elif текст == "/price":
-                цена = получить_текущую_цену_xau()
-                if цена:
-                    отправить_в_телеграм(
-                        f"💰 XAUUSD: ${цена['текущая']:.2f}\n"
-                        f"Изменение: {цена.get('изменение_процент', 0):+.2f}%",
-                        чат_id=чат_id
-                    )
-            elif текст == "/status":
-                защита = загрузить_защиту()
-                отправить_в_телеграм(
-                    f"📊 Статус:\n"
-                    f"Сделок сегодня: {защита['сделок_за_день']}/{MAX_DAILY_TRADES}\n"
-                    f"P&L: ${защита['дневной_pnl']:.2f}",
-                    чат_id=чат_id
-                )
-            elif текст.startswith("/ask"):
-                вопрос = текст[5:].strip()
-                if вопрос:
-                    ответ, _ = задать_вопрос_deepseek(вопрос)
-                    отправить_в_телеграм(f"🧠 {ответ}" if ответ else "⚠️ AI недоступен", чат_id=чат_id)
-        
-        elif "callback_query" in обновление:
-            # Обработка нажатий на кнопки (можно расширить)
-            pass
-    
-    except Exception as ошибка:
-        logger.error(f"Ошибка Telegram webhook: {ошибка}", exc_info=True)
-    
-    return jsonify({"ok": True})
-
+        if update.get("message"):
+            msg = update["message"]
+            text = (msg.get("text") or "").strip()
+            cid = msg.get("chat",{}).get("id")
+            if text == "/start":
+                tg_send("👋 *XAU AI Trader*\n/price /status /ask вопрос /buy ЦЕНА RSI ТРЕНД ATR /sell ЦЕНА RSI ТРЕНД ATR", cid)
+            elif text == "/price":
+                p = get_current_xau_price()
+                tg_send(f"💰 XAUUSD: ${p['current']:.2f}" if p else "Нет данных", cid)
+            elif text == "/status":
+                prot = load_protection()
+                tg_send(f"📊 Сделок: {prot['daily_trades']}/{MAX_DAILY_TRADES}\nP&L: ${prot['daily_pnl']:.2f}", cid)
+            elif text.startswith("/ask"):
+                q = text[5:].strip()
+                if q:
+                    ans, _ = deepseek_ask(q)
+                    tg_send(f"🧠 {ans}" if ans else "AI недоступен", cid)
+        elif update.get("callback_query"):
+            cb = update["callback_query"]
+            data = cb.get("data","")
+            cid = cb.get("message",{}).get("chat",{}).get("id")
+            if ":" in data:
+                action, trade_id = data.split(":",1)
+                if action in ("win","loss"):
+                    with _lock:
+                        trades = load_trades()
+                        for t in trades:
+                            if t.get("id")==trade_id: t["outcome"]=action; register_trade_protection(action); break
+                        save_trades(trades)
+                    tg_answer_callback(cb.get("id"), "✅" if action=="win" else "❌")
+    except Exception as e: logger.error(f"TG webhook: {e}")
+    return jsonify({"ok":True})
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ЗАПУСК ПРИЛОЖЕНИЯ
+# АВТО-СИГНАЛЫ
 # ══════════════════════════════════════════════════════════════════════════════
 
-def запустить_фоновые_процессы():
-    """Запуск всех фоновых потоков"""
-    
-    # Авто-сигналы (каждые 5 минут)
-    поток_авто = threading.Thread(target=процесс_авто_сигналов, daemon=True, name="АвтоСигналы")
-    поток_авто.start()
-    logger.info("Фоновый процесс: авто-сигналы запущен")
-    
-    # Сброс защиты в полночь
-    def сброс_в_полночь():
-        while True:
-            сейчас = datetime.utcnow()
-            полночь = сейчас.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-            ожидание = (полночь - сейчас).total_seconds()
-            logger.info(f"[Планировщик] Сброс защиты через {ожидание/3600:.1f} часов")
-            time.sleep(ожидание)
-            сбросить_ежедневную_защиту()
-    
-    поток_сброса = threading.Thread(target=сброс_в_полночь, daemon=True, name="СбросЗащиты")
-    поток_сброса.start()
-    
-    # Сбор инсайтов каждый час
-    def сбор_инсайтов():
-        time.sleep(300)  # Первый запуск через 5 минут
-        while True:
-            try:
-                logger.info("[Планировщик] Сбор инсайтов...")
-                новые = собрать_рыночные_инсайты()
-                обновить_базу_знаний(новые)
-                logger.info(f"[Планировщик] Собрано {len(новые)} записей")
-            except Exception as ошибка:
-                logger.error(f"Ошибка сбора инсайтов: {ошибка}")
-            time.sleep(3600)
-    
-    поток_инсайтов = threading.Thread(target=сбор_инсайтов, daemon=True, name="Инсайты")
-    поток_инсайтов.start()
-    
-    # Дневной отчёт
-    def дневной_отчёт():
-        while True:
-            сейчас = datetime.utcnow()
-            отчёт_время = сейчас.replace(hour=20, minute=0, second=0, microsecond=0)
-            if отчёт_время <= сейчас:
-                отчёт_время += timedelta(days=1)
-            ожидание = (отчёт_время - сейчас).total_seconds()
-            time.sleep(ожидание)
-            
-            защита = загрузить_защиту()
-            отправить_всем(
-                f"🌅 *Дневной отчёт XAU AI Trader*\n\n"
-                f"Сделок сегодня: {защита['сделок_за_день']}\n"
-                f"P&L: ${защита['дневной_pnl']:.2f}\n"
-                f"Успешных серий: {sum(1 for s in защита['последние_исходы'][-5:] if s == 'win')}/5\n"
-            )
-    
-    поток_отчёта = threading.Thread(target=дневной_отчёт, daemon=True, name="Отчёт")
-    поток_отчёта.start()
+def auto_signals():
+    time.sleep(120)
+    while True:
+        try:
+            time.sleep(300)
+            ok, _ = check_protection()
+            if not ok: continue
+            prot = load_protection()
+            if prot["daily_trades"] >= MAX_DAILY_TRADES: continue
+            p = get_current_xau_price()
+            if not p: continue
+            trend = "UP" if (p.get("change") or 0) > 0 else "DOWN"
+            ind = calculate_indicators()
+            news = get_news()
+            check = check_8_rules(ind, news, trend)
+            if check["decision"]:
+                logger.info(f"[АВТО] {trend} @ ${p['current']:.2f}")
+        except Exception as e: logger.error(f"Авто: {e}")
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ЗАПУСК
+# ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    logger.info("=" * 70)
-    logger.info("XAU AI Trader v3.0 — ЗАПУСК")
-    logger.info(f"Порт: {PORT}")
-    logger.info(f"Bybit UID: {MY_BYBIT_UID}")
-    logger.info(f"Лимит сделок: {MAX_DAILY_TRADES}/день")
-    logger.info(f"Стоп-лосс: -${MAX_DAILY_LOSS} | Тейк-профит: +${MAX_DAILY_PROFIT}")
-    logger.info("=" * 70)
-    
-    # Запускаем фоновые процессы
-    запустить_фоновые_процессы()
-    
-    # Запускаем Flask
-    app.run(
-        host="0.0.0.0",
-        port=PORT,
-        threaded=True,
-        debug=False
-    )
+    threading.Thread(target=auto_signals, daemon=True).start()
+    logger.info(f"XAU AI Trader на порту {PORT}")
+    app.run(host="0.0.0.0", port=PORT, threaded=True)
