@@ -909,12 +909,12 @@ def обработать_колбэк(колбэк):
     ответить_на_колбэк(колбэк_id)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FLASK + ГЛАВНАЯ СТРАНИЦА (дизайн как на фото 2)
+# FLASK + ГЛАВНАЯ СТРАНИЦА С ГРАФИКОМ TRADINGVIEW
 # ══════════════════════════════════════════════════════════════════════════════
 
 app = Flask(__name__)
 
-ГЛАВНАЯ_HTML = """<!DOCTYPE html>
+ГЛАВНАЯ_HTML = r"""<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -937,10 +937,10 @@ app = Flask(__name__)
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
-            padding: 20px;
+            padding: 16px;
         }
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
         }
 
@@ -949,17 +949,16 @@ app = Flask(__name__)
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 12px;
-            padding: 20px 24px;
+            padding: 16px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
         .price-main h1 {
-            font-size: 2em;
+            font-size: 1.8em;
             font-weight: 700;
             color: #fff;
-            margin-bottom: 2px;
         }
         .price-change {
             font-size: 0.9em;
@@ -970,82 +969,66 @@ app = Flask(__name__)
         .price-info {
             text-align: right;
             color: var(--sub);
-            font-size: 0.85em;
-            line-height: 1.6;
+            font-size: 0.8em;
+            line-height: 1.5;
         }
 
-        /* Сетка 2×2 */
-        .grid {
+        /* Сетка Рынок + Торговля */
+        .top-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 16px;
+            gap: 12px;
+            margin-bottom: 12px;
         }
-        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+        @media (max-width: 600px) { .top-grid { grid-template-columns: 1fr; } }
 
         .card {
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 16px;
+            padding: 14px 16px;
         }
         .card h2 {
-            font-size: 0.85em;
+            font-size: 0.8em;
             text-transform: uppercase;
             color: var(--sub);
-            letter-spacing: 1px;
-            margin-bottom: 12px;
+            letter-spacing: 1.5px;
+            margin-bottom: 10px;
+            font-weight: 600;
         }
-
-        /* Правила */
-        .rules-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        .rule-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9em;
-        }
-        .rule-icon {
-            width: 24px;
-            height: 24px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.8em;
-            background: rgba(63, 185, 80, 0.15);
-            color: var(--green);
-        }
-
-        /* Статистика */
         .stats-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
+            padding: 4px 0;
+            font-size: 0.9em;
         }
         .stat-label { color: var(--sub); }
         .stat-value { font-weight: 600; }
-        .stat-value.green { color: var(--green); }
-        .stat-value.red { color: var(--red); }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        .badge-bear { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+        .badge-sell { background: rgba(248, 81, 73, 0.1); color: var(--red); }
+        .badge-green { background: rgba(63, 185, 80, 0.15); color: var(--green); }
 
         /* AI Status */
         .ai-status {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-top: 12px;
-            padding: 10px 14px;
-            background: rgba(63, 185, 80, 0.08);
-            border-radius: 8px;
+            gap: 10px;
             font-size: 0.9em;
         }
         .ai-dot {
-            width: 8px;
-            height: 8px;
+            width: 8px; height: 8px;
             background: var(--green);
             border-radius: 50%;
             animation: pulse 2s infinite;
@@ -1055,55 +1038,59 @@ app = Flask(__name__)
             50% { opacity: 0.4; }
         }
 
-        /* График (заглушка) */
-        .chart-area {
+        /* Правила */
+        .rules-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .rule-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85em;
+        }
+        .rule-num {
+            width: 20px; height: 20px;
+            border-radius: 5px;
+            background: rgba(210, 153, 29, 0.15);
+            color: var(--gold);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7em; font-weight: 700;
+            flex-shrink: 0;
+        }
+        .flex-note {
+            margin-top: 8px;
+            font-size: 0.75em;
+            color: var(--sub);
+        }
+
+        /* ГРАФИК TRADINGVIEW */
+        .chart-wrapper {
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 16px;
-            height: 250px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .chart-placeholder {
-            width: 100%;
-            height: 200px;
-            background: linear-gradient(135deg, rgba(63,185,80,0.1), rgba(248,81,73,0.1));
-            border-radius: 8px;
-            position: relative;
             overflow: hidden;
+            margin-bottom: 12px;
+            height: 450px;
         }
-        .chart-line {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 150px;
-            background: linear-gradient(to top, rgba(63,185,80,0.2), transparent 80%);
-            border-bottom: 2px solid var(--green);
-            clip-path: polygon(0 80%, 10% 70%, 20% 85%, 30% 50%, 40% 60%, 50% 40%, 60% 55%, 70% 35%, 80% 45%, 90% 30%, 100% 50%, 100% 100%, 0 100%);
+        .chart-wrapper iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
         }
 
         /* Footer */
         .footer {
             text-align: center;
             color: var(--sub);
-            font-size: 0.8em;
-            padding: 20px;
+            font-size: 0.75em;
+            padding: 16px;
         }
-
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: 600;
+        .footer a {
+            color: var(--gold);
+            text-decoration: none;
         }
-        .badge-bear { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-        .badge-sell { background: rgba(248, 81, 73, 0.1); color: var(--red); }
-        .badge-green { background: rgba(63, 185, 80, 0.15); color: var(--green); }
     </style>
 </head>
 <body>
@@ -1120,11 +1107,11 @@ app = Flask(__name__)
             </div>
         </div>
 
-        <!-- Статистика -->
-        <div class="grid">
+        <!-- Рынок + Торговля -->
+        <div class="top-grid">
             <div class="card">
                 <h2>📊 Рынок</h2>
-                <div class="stats-row"><span class="stat-label">Bias</span><span class="stat-value red">← Медвежий</span></div>
+                <div class="stats-row"><span class="stat-label">Bias</span><span class="badge badge-bear">← Медвежий</span></div>
                 <div class="stats-row"><span class="stat-label">Signal</span><span class="badge badge-sell">SELL</span></div>
                 <div class="stats-row"><span class="stat-label">Conf</span><span class="stat-value" id="conf">{{ confidence }}%</span></div>
             </div>
@@ -1137,39 +1124,40 @@ app = Flask(__name__)
         </div>
 
         <!-- AI Status -->
-        <div class="card" style="margin-bottom:16px;">
-            <h2>🤖 AI Статус</h2>
-            <div class="ai-status">
-                <div class="ai-dot"></div>
-                <span>✔ Готов к торговле | Данных: <span id="data-count">{{ data_count }}</span></span>
-            </div>
+        <div class="ai-status">
+            <div class="ai-dot"></div>
+            <span>✅ Готов к торговле | Данных: <span id="data-count">{{ data_count }}</span></span>
         </div>
 
         <!-- 8 Правил -->
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card" style="margin-bottom:12px;">
             <h2>📋 8 Правил входа</h2>
             <div class="rules-grid">
-                <div class="rule-item"><span class="rule-icon">1</span> ATR $10–25</div>
-                <div class="rule-item"><span class="rule-icon">5</span> Без важных новостей</div>
-                <div class="rule-item"><span class="rule-icon">2</span> H4 и H1 в одну сторону</div>
-                <div class="rule-item"><span class="rule-icon">6</span> Не первые 30 мин</div>
-                <div class="rule-item"><span class="rule-icon">3</span> До EMA20 < $6.5</div>
-                <div class="rule-item"><span class="rule-icon">7</span> ИИ уверенность >70%</div>
-                <div class="rule-item"><span class="rule-icon">4</span> RSI >48 (BUY) / <52 (SELL)</div>
-                <div class="rule-item"><span class="rule-icon">8</span> Риск ≤7% от $200</div>
+                <div class="rule-item"><span class="rule-num">1</span> ATR $10–25</div>
+                <div class="rule-item"><span class="rule-num">5</span> Без важных новостей</div>
+                <div class="rule-item"><span class="rule-num">2</span> H4 и H1 в одну сторону</div>
+                <div class="rule-item"><span class="rule-num">6</span> Не первые 30 мин</div>
+                <div class="rule-item"><span class="rule-num">3</span> До EMA20 < $6.5</div>
+                <div class="rule-item"><span class="rule-num">7</span> ИИ уверенность >70%</div>
+                <div class="rule-item"><span class="rule-num">4</span> RSI >48 (BUY) / <52 (SELL)</div>
+                <div class="rule-item"><span class="rule-num">8</span> Риск ≤7% от $200</div>
             </div>
-            <p style="margin-top:10px; font-size:0.8em; color:var(--sub);">⚠️ Гибкость: RSI не совпал, но 7/8 правил — вход</p>
+            <div class="flex-note">⚠️ Гибкость: RSI не совпал, но 7/8 правил — вход</div>
         </div>
 
-        <!-- График -->
-        <div class="chart-area">
-            <div class="chart-placeholder">
-                <div class="chart-line"></div>
-                <span style="position:absolute;top:10px;left:12px;font-size:0.8em;color:var(--sub);">XAUUSD</span>
-            </div>
+        <!-- ГРАФИК TRADINGVIEW (как на 4 фото) -->
+        <div class="chart-wrapper">
+            <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=XAUUSD&interval=5&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=f1f3f6&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&hideideas=1&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=ru&utm_source=localhost&utm_medium=widget&utm_campaign=chart&utm_term=XAUUSD"
+                id="tradingview_chart"
+                scrolling="no"
+                allowtransparency="true"
+                frameborder="0">
+            </iframe>
         </div>
 
-        <div class="footer">XAU AI Trader © 2024 · Работает на Render · <a href="/menu" style="color:var(--gold);">Меню</a></div>
+        <div class="footer">
+            XAU AI Trader © 2024 · Работает на Render · <a href="/menu">Меню</a>
+        </div>
     </div>
 
     <script>
@@ -1194,7 +1182,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def главная():
-    """Главная страница с дашбордом как на фото 2"""
+    """Главная страница с дашбордом и графиком TradingView"""
     цена = получить_цену_xau()
     if цена:
         цена_текст = f"{цена['текущая']:,.2f}"
@@ -1217,7 +1205,7 @@ def главная():
         change=изм_текст,
         change_class=класс,
         time=datetime.utcnow().strftime("%H:%M:%S"),
-        confidence=round(random.uniform(65, 78)),
+        confidence=random.randint(65, 78),
         trades=len(сделки),
         winrate=винрейт,
         data_count=len(загрузить_инсайты())
