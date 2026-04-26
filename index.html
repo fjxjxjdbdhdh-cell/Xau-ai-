@@ -12,18 +12,23 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0d1117; color: #e6edf3; font-family: -apple-system, sans-serif; height: 100vh; display: flex; flex-direction: column; }
         .header { background: #161b22; padding: 10px; text-align: center; border-bottom: 1px solid #30363d; }
-        .header h1 { font-size: 16px; color: #f0b90b; margin-bottom: 4px; }
-        .price-row { display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .header h1 { font-size: 16px; color: #f0b90b; margin-bottom: 6px; }
+        .price-row { display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 6px; }
         .price { font-size: 22px; font-weight: bold; }
         .price.up { color: #00ff88; } .price.down { color: #ff1744; }
         .change { font-size: 13px; padding: 2px 8px; border-radius: 8px; }
         .change.up { background: #00ff8822; color: #00ff88; } .change.down { background: #ff174422; color: #ff1744; }
-        .chart-container { flex: 1; min-height: 0; }
+        .ai-panel { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; padding: 0 10px 8px; font-size: 10px; }
+        .ai-item { background: #1a1f2e; padding: 6px; border-radius: 6px; text-align: center; }
+        .ai-item .label { color: #8b949e; font-size: 9px; }
+        .ai-item .value { font-weight: bold; font-size: 13px; margin-top: 2px; }
+        .ai-item .value.bull { color: #00ff88; } .ai-item .value.bear { color: #ff1744; }
+        .ai-item .value.neutral { color: #f0b90b; }
+        .chart-container { flex: 1; min-height: 0; background: #000; }
         iframe { width: 100%; height: 100%; border: none; }
         .actions { display: flex; gap: 8px; padding: 10px; background: #161b22; }
         .btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; color: white; cursor: pointer; }
-        .btn-buy { background: #00c853; }
-        .btn-sell { background: #ff1744; }
+        .btn-buy { background: #00c853; } .btn-sell { background: #ff1744; }
         .btn-chat { background: #7c3aed; font-size: 13px; }
         .bottom { padding: 8px 10px; background: #161b22; border-top: 1px solid #30363d; display: flex; gap: 6px; }
         .bottom input { flex: 1; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 20px; font-size: 13px; }
@@ -35,8 +40,12 @@
         .modal-content .row { display: flex; gap: 8px; }
         .modal-content .row button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; }
         .modal-close { text-align: right; color: #8b949e; cursor: pointer; font-size: 18px; }
-        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #00c853; color: white; padding: 10px 20px; border-radius: 20px; z-index: 20; display: none; }
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #00c853; color: white; padding: 10px 20px; border-radius: 20px; z-index: 20; display: none; font-size: 14px; }
         input::placeholder { color: #484f58; }
+        .signal-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 3px; }
+        .signal-dot.buy { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
+        .signal-dot.sell { background: #ff1744; box-shadow: 0 0 8px #ff1744; }
+        .signal-dot.wait { background: #f0b90b; }
     </style>
 </head>
 <body>
@@ -46,24 +55,32 @@
             <span class="price" id="price">--</span>
             <span class="change" id="change">--</span>
         </div>
+        <div class="ai-panel" id="aiPanel">
+            <div class="ai-item"><div class="label">Bias</div><div class="value neutral" id="aiBias">--</div></div>
+            <div class="ai-item"><div class="label">Signal</div><div class="value neutral" id="aiSignal">--</div></div>
+            <div class="ai-item"><div class="label">Conf</div><div class="value" id="aiConf">--%</div></div>
+            <div class="ai-item"><div class="label">Trades</div><div class="value" id="aiTrades">0</div></div>
+            <div class="ai-item"><div class="label">Winrate</div><div class="value" id="aiWinrate">--</div></div>
+            <div class="ai-item"><div class="label">Risk</div><div class="value" id="aiRisk">--</div></div>
+            <div class="ai-item" style="grid-column:1/4;"><div class="label">AI Status</div><div class="value" id="aiStatus" style="font-size:11px;">Загрузка...</div></div>
+        </div>
     </div>
     
     <div class="chart-container">
-        <iframe id="chart" src="https://s.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=XAUUSD&interval=5&theme=dark&style=1&locale=ru&width=100%&height=100%&allow_symbol_change=false&withdateranges=false&hideideas=true&studies=[]&showpopupbutton=false" allowfullscreen></iframe>
+        <iframe id="chart" src="https://finviz.com/futures_chart.ashx?t=GC&p=m5&w=400&h=300" width="100%" height="100%" frameborder="0"></iframe>
     </div>
     
     <div class="actions">
         <button class="btn btn-sell" onclick="openTrade('SELL')">🔴 SELL</button>
-        <button class="btn btn-chat" id="chatToggle">💬 Чат</button>
+        <button class="btn btn-chat" id="chatToggle">💬 AI</button>
         <button class="btn btn-buy" onclick="openTrade('BUY')">🟢 BUY</button>
     </div>
     
     <div class="bottom" id="chatRow" style="display:none;">
-        <input type="text" id="msg_input" placeholder="Спроси AI...">
+        <input type="text" id="msg_input" placeholder="Спроси AI о рынке...">
         <button onclick="sendChat()">▶</button>
     </div>
 
-    <!-- Модальное окно сделки -->
     <div class="modal" id="tradeModal">
         <div class="modal-content">
             <div class="modal-close" onclick="closeModal()">✕</div>
@@ -82,23 +99,61 @@
     <script>
         const API = 'https://xau-ai.onrender.com';
         let currentSignal = 'BUY';
-        let priceHistory = [];
         let lastPrice = null;
         
-        // Переключение чата
         document.getElementById('chatToggle').addEventListener('click', () => {
             const row = document.getElementById('chatRow');
             row.style.display = row.style.display === 'none' ? 'flex' : 'none';
         });
         
-        // Обновление цены
+        // ========== AI STATUS ==========
+        async function updateAIStatus() {
+            try {
+                const r = await fetch(API + '/stats');
+                const d = await r.json();
+                
+                // Bias
+                const bias = (d.winrate_overall || 0) > 0.5 ? '📈 Bull' : '📉 Bear';
+                const biasEl = document.getElementById('aiBias');
+                biasEl.textContent = bias;
+                biasEl.className = 'value ' + (bias.includes('Bull') ? 'bull' : 'bear');
+                
+                // Signal
+                const signal = (d.winrate_overall || 0) > 0.5 ? 'BUY' : 'SELL';
+                const sigEl = document.getElementById('aiSignal');
+                sigEl.innerHTML = `<span class="signal-dot ${signal.toLowerCase()}"></span>${signal}`;
+                sigEl.className = 'value ' + (signal === 'BUY' ? 'bull' : 'bear');
+                
+                // Confidence
+                const conf = ((d.average_confidence || 0) * 100).toFixed(0);
+                document.getElementById('aiConf').textContent = conf + '%';
+                
+                // Trades
+                document.getElementById('aiTrades').textContent = d.total_trades || 0;
+                
+                // Winrate
+                const wr = ((d.winrate_overall || 0) * 100).toFixed(0);
+                const wrEl = document.getElementById('aiWinrate');
+                wrEl.textContent = wr + '%';
+                wrEl.className = 'value ' + (wr > 50 ? 'bull' : 'bear');
+                
+                // Risk
+                document.getElementById('aiRisk').textContent = 'Normal';
+                
+                // Status text
+                const status = conf > 70 ? '✅ Готов к торговле' : conf > 50 ? '⏳ Анализирует рынок' : '🔍 Собирает данные';
+                document.getElementById('aiStatus').textContent = status + ' | Insights: ' + (d.labeled || 0);
+                
+            } catch(e) {
+                document.getElementById('aiStatus').textContent = '⚠️ Сервер недоступен';
+            }
+        }
+        
+        // ========== PRICE UPDATE ==========
         async function updatePrice() {
             try {
-                const r = await fetch(API + '/knowledge');
-                const d = await r.json();
                 const priceEl = document.getElementById('price');
                 const changeEl = document.getElementById('change');
-                
                 let price = 4700 + Math.random() * 50;
                 
                 if (lastPrice) {
@@ -119,7 +174,7 @@
             } catch(e) {}
         }
         
-        // Открыть модалку сделки
+        // ========== TRADE ==========
         function openTrade(signal) {
             currentSignal = signal;
             document.getElementById('modalTitle').textContent = signal + ' XAUUSD';
@@ -128,11 +183,8 @@
             document.getElementById('tradeModal').classList.add('active');
         }
         
-        function closeModal() {
-            document.getElementById('tradeModal').classList.remove('active');
-        }
+        function closeModal() { document.getElementById('tradeModal').classList.remove('active'); }
         
-        // Подтвердить сделку
         document.getElementById('btnConfirmBuy').addEventListener('click', () => confirmTrade('BUY'));
         document.getElementById('btnConfirmSell').addEventListener('click', () => confirmTrade('SELL'));
         
@@ -140,11 +192,7 @@
             const sl = document.getElementById('t_sl').value || '8';
             const tp = document.getElementById('t_tp').value || '25';
             const price = lastPrice ? lastPrice.toFixed(2) : '4700';
-            const rsi = '50';
-            const atr = '10';
-            const trend = signal === 'BUY' ? 'UP' : 'DOWN';
-            
-            let text = `/${signal.toLowerCase()} ${price} ${rsi} ${trend} ${atr} ${sl}$ ${tp}$`;
+            const text = `/${signal.toLowerCase()} ${price} 50 ${signal === 'BUY' ? 'UP' : 'DOWN'} 10 ${sl}$ ${tp}$`;
             
             try {
                 await fetch(API + '/telegram/webhook', {
@@ -152,30 +200,25 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({message: {text: text, chat: {id: '5246379098'}}})
                 });
-                showToast('✅ ' + signal + ' @ ' + price);
+                showToast('✅ ' + signal + ' @ ' + price + ' | SL: $' + sl + ' | TP: $' + tp);
                 closeModal();
-            } catch(e) {
-                showToast('❌ Ошибка');
-            }
+            } catch(e) { showToast('❌ Ошибка'); }
         }
         
-        // Чат
+        // ========== CHAT ==========
         async function sendChat() {
             const input = document.getElementById('msg_input');
             const text = input.value.trim();
             if (!text) return;
             input.value = '';
-            
             try {
                 await fetch(API + '/telegram/webhook', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({message: {text: text, chat: {id: '5246379098'}}})
                 });
-                showToast('✅ Отправлено в Telegram');
-            } catch(e) {
-                showToast('❌ Ошибка');
-            }
+                showToast('✅ Отправлено AI');
+            } catch(e) { showToast('❌ Ошибка'); }
         }
         
         function showToast(msg) {
@@ -186,7 +229,9 @@
         }
         
         updatePrice();
+        updateAIStatus();
         setInterval(updatePrice, 30000);
+        setInterval(updateAIStatus, 60000);
     </script>
 </body>
 </html>
