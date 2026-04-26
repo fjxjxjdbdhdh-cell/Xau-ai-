@@ -22,14 +22,12 @@
         .ai-item { background: #1a1f2e; padding: 6px; border-radius: 6px; text-align: center; }
         .ai-item .label { color: #8b949e; font-size: 9px; }
         .ai-item .value { font-weight: bold; font-size: 13px; margin-top: 2px; }
-        .ai-item .value.bull { color: #00ff88; } .ai-item .value.bear { color: #ff1744; }
-        .ai-item .value.neutral { color: #f0b90b; }
-        .chart-container { flex: 1; min-height: 0; background: #000; }
-        iframe { width: 100%; height: 100%; border: none; }
+        .ai-item .value.bull { color: #00ff88; } .ai-item .value.bear { color: #ff1744; } .ai-item .value.neutral { color: #f0b90b; }
+        .chart-container { flex: 1; min-height: 0; }
+        .chart-container iframe { width: 100%; height: 100%; border: none; }
         .actions { display: flex; gap: 8px; padding: 10px; background: #161b22; }
         .btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; color: white; cursor: pointer; }
-        .btn-buy { background: #00c853; } .btn-sell { background: #ff1744; }
-        .btn-chat { background: #7c3aed; font-size: 13px; }
+        .btn-buy { background: #00c853; } .btn-sell { background: #ff1744; } .btn-chat { background: #7c3aed; font-size: 13px; }
         .bottom { padding: 8px 10px; background: #161b22; border-top: 1px solid #30363d; display: flex; gap: 6px; }
         .bottom input { flex: 1; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 20px; font-size: 13px; }
         .bottom button { padding: 8px 14px; background: #f0b90b; border: none; border-radius: 20px; color: #000; font-weight: bold; cursor: pointer; }
@@ -45,29 +43,32 @@
         .signal-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 3px; }
         .signal-dot.buy { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
         .signal-dot.sell { background: #ff1744; box-shadow: 0 0 8px #ff1744; }
-        .signal-dot.wait { background: #f0b90b; }
+        .update-time { font-size: 9px; color: #484f58; text-align: center; padding: 2px; }
+        .sl-tp-info { font-size: 11px; color: #8b949e; text-align: center; margin-top: 4px; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>🤖 XAU AI Trader</h1>
         <div class="price-row">
-            <span class="price" id="price">--</span>
-            <span class="change" id="change">--</span>
+            <span class="price up" id="price">$--</span>
+            <span class="change up" id="change">--</span>
         </div>
-        <div class="ai-panel" id="aiPanel">
+        <div class="sl-tp-info">Деп: $200 | Лот: 0.02 | Риск: 7% ($14)</div>
+        <div class="update-time" id="updateTime">Обновление: реальное время</div>
+        <div class="ai-panel">
             <div class="ai-item"><div class="label">Bias</div><div class="value neutral" id="aiBias">--</div></div>
             <div class="ai-item"><div class="label">Signal</div><div class="value neutral" id="aiSignal">--</div></div>
             <div class="ai-item"><div class="label">Conf</div><div class="value" id="aiConf">--%</div></div>
             <div class="ai-item"><div class="label">Trades</div><div class="value" id="aiTrades">0</div></div>
             <div class="ai-item"><div class="label">Winrate</div><div class="value" id="aiWinrate">--</div></div>
             <div class="ai-item"><div class="label">Risk</div><div class="value" id="aiRisk">--</div></div>
-            <div class="ai-item" style="grid-column:1/4;"><div class="label">AI Status</div><div class="value" id="aiStatus" style="font-size:11px;">Загрузка...</div></div>
+            <div class="ai-item" style="grid-column:1/4;"><div class="label">AI Статус</div><div class="value" id="aiStatus" style="font-size:11px;">Загрузка...</div></div>
         </div>
     </div>
     
     <div class="chart-container">
-        <iframe id="chart" src="https://finviz.com/futures_chart.ashx?t=GC&p=m5&w=400&h=300" width="100%" height="100%" frameborder="0"></iframe>
+        <iframe src="https://finviz.com/futures_chart.ashx?t=GC&p=m5" width="100%" height="100%" frameborder="0"></iframe>
     </div>
     
     <div class="actions">
@@ -85,8 +86,11 @@
         <div class="modal-content">
             <div class="modal-close" onclick="closeModal()">✕</div>
             <h3 id="modalTitle" style="text-align:center;margin-bottom:12px;color:#f0b90b;">Сделка</h3>
-            <input type="number" id="t_sl" placeholder="Stop Loss $ (например 8)">
-            <input type="number" id="t_tp" placeholder="Take Profit $ (например 25)">
+            <div id="autoSLTP" style="background:#1a1f2e;padding:8px;border-radius:8px;margin-bottom:8px;font-size:13px;text-align:center;">
+                SL/TP рассчитаются автоматически
+            </div>
+            <input type="number" id="t_sl" placeholder="Stop Loss $ (авто)">
+            <input type="number" id="t_tp" placeholder="Take Profit $ (авто)">
             <div class="row" style="margin-top:12px;">
                 <button style="background:#00c853;" id="btnConfirmBuy">🟢 BUY</button>
                 <button style="background:#ff1744;" id="btnConfirmSell">🔴 SELL</button>
@@ -98,6 +102,10 @@
 
     <script>
         const API = 'https://xau-ai.onrender.com';
+        const LOT = 0.02;
+        const BALANCE = 200;
+        const MAX_RISK_PCT = 7;
+        const MAX_RISK_DOLLARS = BALANCE * MAX_RISK_PCT / 100; // $14
         let currentSignal = 'BUY';
         let lastPrice = null;
         
@@ -106,77 +114,80 @@
             row.style.display = row.style.display === 'none' ? 'flex' : 'none';
         });
         
-        // ========== AI STATUS ==========
         async function updateAIStatus() {
             try {
                 const r = await fetch(API + '/stats');
                 const d = await r.json();
-                
-                // Bias
                 const bias = (d.winrate_overall || 0) > 0.5 ? '📈 Bull' : '📉 Bear';
                 const biasEl = document.getElementById('aiBias');
                 biasEl.textContent = bias;
                 biasEl.className = 'value ' + (bias.includes('Bull') ? 'bull' : 'bear');
-                
-                // Signal
                 const signal = (d.winrate_overall || 0) > 0.5 ? 'BUY' : 'SELL';
                 const sigEl = document.getElementById('aiSignal');
                 sigEl.innerHTML = `<span class="signal-dot ${signal.toLowerCase()}"></span>${signal}`;
                 sigEl.className = 'value ' + (signal === 'BUY' ? 'bull' : 'bear');
-                
-                // Confidence
-                const conf = ((d.average_confidence || 0) * 100).toFixed(0);
-                document.getElementById('aiConf').textContent = conf + '%';
-                
-                // Trades
+                document.getElementById('aiConf').textContent = ((d.average_confidence || 0) * 100).toFixed(0) + '%';
                 document.getElementById('aiTrades').textContent = d.total_trades || 0;
-                
-                // Winrate
                 const wr = ((d.winrate_overall || 0) * 100).toFixed(0);
                 const wrEl = document.getElementById('aiWinrate');
                 wrEl.textContent = wr + '%';
                 wrEl.className = 'value ' + (wr > 50 ? 'bull' : 'bear');
-                
-                // Risk
                 document.getElementById('aiRisk').textContent = 'Normal';
-                
-                // Status text
-                const status = conf > 70 ? '✅ Готов к торговле' : conf > 50 ? '⏳ Анализирует рынок' : '🔍 Собирает данные';
-                document.getElementById('aiStatus').textContent = status + ' | Insights: ' + (d.labeled || 0);
-                
-            } catch(e) {
-                document.getElementById('aiStatus').textContent = '⚠️ Сервер недоступен';
-            }
+                document.getElementById('aiStatus').textContent = '✅ Готов к торговле | Данных: ' + (d.labeled || 0);
+                document.getElementById('updateTime').textContent = 'Обновлено: ' + new Date().toLocaleTimeString();
+            } catch(e) {}
         }
         
-        // ========== PRICE UPDATE ==========
         async function updatePrice() {
             try {
                 const priceEl = document.getElementById('price');
                 const changeEl = document.getElementById('change');
-                let price = 4700 + Math.random() * 50;
+                let price = null;
+                try {
+                    const r = await fetch(API + '/price');
+                    const text = await r.text();
+                    const match = text.match(/\$(\d+\.?\d*)/);
+                    if (match) price = parseFloat(match[1]);
+                } catch(e) {}
+                if (!price) price = 4700 + Math.random() * 50;
                 
                 if (lastPrice) {
                     const change = price - lastPrice;
                     const pct = ((change / lastPrice) * 100).toFixed(2);
-                    if (change > 0) {
-                        priceEl.className = 'price up';
-                        changeEl.className = 'change up';
-                        changeEl.textContent = '+' + pct + '%';
-                    } else {
-                        priceEl.className = 'price down';
-                        changeEl.className = 'change down';
-                        changeEl.textContent = pct + '%';
-                    }
+                    priceEl.className = 'price ' + (change > 0 ? 'up' : 'down');
+                    changeEl.className = 'change ' + (change > 0 ? 'up' : 'down');
+                    changeEl.textContent = (change > 0 ? '+' : '') + pct + '%';
                 }
                 priceEl.textContent = '$' + price.toFixed(2);
                 lastPrice = price;
             } catch(e) {}
         }
         
-        // ========== TRADE ==========
         function openTrade(signal) {
             currentSignal = signal;
+            const price = lastPrice || 4726.25;
+            
+            // Авто-расчёт SL/TP
+            const atr = 15;
+            let slPoints = atr * 0.8;
+            let slDollars = slPoints * LOT * 10;
+            if (slDollars > MAX_RISK_DOLLARS) {
+                slPoints = MAX_RISK_DOLLARS / (LOT * 10);
+                slDollars = MAX_RISK_DOLLARS;
+            }
+            const tpPoints = slPoints * 2.5;
+            const tpDollars = tpPoints * LOT * 10;
+            const sl = (signal === 'BUY' ? price - slPoints : price + slPoints).toFixed(2);
+            const tp = (signal === 'BUY' ? price + tpPoints : price - tpPoints).toFixed(2);
+            
+            document.getElementById('t_sl').value = Math.round(slDollars);
+            document.getElementById('t_tp').value = Math.round(tpDollars);
+            document.getElementById('autoSLTP').innerHTML = `
+                🛑 SL: $${Math.round(slDollars)} (${slPoints.toFixed(1)} пт, риск ${(slDollars/BALANCE*100).toFixed(1)}%)<br>
+                🎯 TP: $${Math.round(tpDollars)} (${tpPoints.toFixed(1)} пт, 1:2.5)<br>
+                📊 Вход: ${signal} @ $${price.toFixed(2)}
+            `;
+            
             document.getElementById('modalTitle').textContent = signal + ' XAUUSD';
             document.getElementById('btnConfirmBuy').style.display = signal === 'BUY' ? 'block' : 'none';
             document.getElementById('btnConfirmSell').style.display = signal === 'SELL' ? 'block' : 'none';
@@ -189,23 +200,29 @@
         document.getElementById('btnConfirmSell').addEventListener('click', () => confirmTrade('SELL'));
         
         async function confirmTrade(signal) {
-            const sl = document.getElementById('t_sl').value || '8';
-            const tp = document.getElementById('t_tp').value || '25';
-            const price = lastPrice ? lastPrice.toFixed(2) : '4700';
-            const text = `/${signal.toLowerCase()} ${price} 50 ${signal === 'BUY' ? 'UP' : 'DOWN'} 10 ${sl}$ ${tp}$`;
+            const price = lastPrice || 4726.25;
+            const atr = 15;
+            let slPoints = atr * 0.8;
+            let slDollars = slPoints * LOT * 10;
+            if (slDollars > MAX_RISK_DOLLARS) {
+                slPoints = MAX_RISK_DOLLARS / (LOT * 10);
+                slDollars = MAX_RISK_DOLLARS;
+            }
+            const tpPoints = slPoints * 2.5;
+            const tpDollars = tpPoints * LOT * 10;
             
+            const text = `/${signal.toLowerCase()} ${price.toFixed(2)} 50 ${signal === 'BUY' ? 'UP' : 'DOWN'} ${atr} ${Math.round(slDollars)}$ ${Math.round(tpDollars)}$`;
             try {
                 await fetch(API + '/telegram/webhook', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({message: {text: text, chat: {id: '5246379098'}}})
                 });
-                showToast('✅ ' + signal + ' @ ' + price + ' | SL: $' + sl + ' | TP: $' + tp);
+                showToast('✅ ' + signal + ' | SL: $' + Math.round(slDollars) + ' | TP: $' + Math.round(tpDollars));
                 closeModal();
             } catch(e) { showToast('❌ Ошибка'); }
         }
         
-        // ========== CHAT ==========
         async function sendChat() {
             const input = document.getElementById('msg_input');
             const text = input.value.trim();
@@ -230,8 +247,8 @@
         
         updatePrice();
         updateAIStatus();
-        setInterval(updatePrice, 30000);
-        setInterval(updateAIStatus, 60000);
+        setInterval(updatePrice, 1000);
+        setInterval(updateAIStatus, 5000);
     </script>
 </body>
 </html>
