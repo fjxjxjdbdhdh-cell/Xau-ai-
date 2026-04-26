@@ -1,6 +1,7 @@
 """
 XAU AI Trader — Полная версия с 8 правилами входа (РУССКИЙ ЯЗЫК)
 Депозит: $200 | Лот: 0.02 | Риск: 7%
+Защита: авто-стоп при убытке $15
 GitHub: https://github.com/fjxjxjdbhdhdh-cell/Xau-ai-
 """
 
@@ -54,6 +55,7 @@ PINE_SCRIPTS_FILE = os.path.join(DATA_DIR, "pine_scripts.json")
 DYNAMIC_COMMANDS_FILE = os.path.join(DATA_DIR, "dynamic_commands.json")
 PENDING_ALERTS_FILE = os.path.join(DATA_DIR, "pending_alerts.json")
 LOG_FILE = os.path.join(DATA_DIR, "trades.log")
+PROTECTION_FILE = os.path.join(DATA_DIR, "protection.json")  # Файл защиты
 
 # Торговые константы как в 8 правилах
 ACCOUNT_BALANCE = 200.0
@@ -68,7 +70,185 @@ RSI_BUY_MIN = 48.0
 RSI_SELL_MAX = 52.0
 SESSION_START_MINUTES = 30
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ЗАЩИТА ОТ УБЫТКОВ
+# ══════════════════════════════════════════════════════════════════════════════
+
+MAX_DAILY_LOSS = 15.0           # Максимальный дневной убыток $15
+MAX_CONSECUTIVE_LOSSES = 3      # Максимум убыточных сделок подряд
+COOLDOWN_MINUTES = 60           # Время паузы после срабатывания защиты (минут)
+MAX_TRADES_PER_HOUR = 5         # Максимум сделок в час
+MIN_CONFIDENCE_FOR_TRADE = 0.75 # Повышенный порог после убытков
+
+def загрузить_защиту():
+    """Загрузка состояния защиты"""
+    return прочитать_json(PROTECTION_FILE, {
+        "активна": True,
+        "дневной_убыток": 0.0,
+        "последние_сделки": [],  # список исходов последних сделок ["win", "loss", ...]
+        "сделок_за_час": 0,
+        "час_начала": datetime.utcnow().isoformat(),
+        "пауза_до": None,  # время до которого действует пауза (ISO формат)
+        "история_срабатываний": []
+    })
+
+def сохранить_защиту(данные):
+    """Сохранение состояния защиты"""
+    записать_json(PROTECTION_FILE, данные)
+
+def сбросить_ежедневную_защиту():
+    """Сброс дневного счётчика убытков"""
+    защита = загрузить_защиту()
+    сейчас = datetime.utcnow()
+    защита["дневной_убыток"] = 0.0
+    защита["последние_сделки"] = []
+    защита["сделок_за_час"] = 0
+    защита["час_начала"] = сейчас.isoformat()
+    защита["пауза_до"] = None
+    сохранить_защиту(защита)
+    logger.info("[ЗАЩИТА] Дневной счётчик сброшен")
+
+def проверить_защиту():
+    """
+    Проверка всех условий защиты.
+    Возвращает (разрешено, причина_блокировки)
+    """
+    защита = загрузить_защиту()
+    сейчас = datetime.utcnow()
+    
+    # Проверка паузы
+    if защита.get("пауза_до"):
+        try:
+            пауза_до = datetime.fromisoformat(защита["пауза_до"])
+            if сейчас < пауза_до:
+                осталось = int((пауза_до - сейчас).total_seconds() / 60)
+                return False, f"⏸️ Пауза после убытков. До снятия: {осталось} мин"
+            else:
+                # Пауза закончилась
+                защита["пауза_до"] = None
+                сохранить_защиту(защита)
+                logger.info("[ЗАЩИТА] Пауза снята")
+        except:
+            защита["пауза_до"] = None
+            сохранить_защиту(защита)
+    
+    # Проверка дневного убытка
+    if защита["дневной_убыток"] <= -MAX_DAILY_LOSS:
+        return False, f"🛑 Дневной убыток ${abs(защита['дневной_убыток']):.2f} превысил лимит ${MAX_DAILY_LOSS}"
+    
+    # Проверка последовательных убытков
+    последние = защита["последние_сделки"][-MAX_CONSECUTIVE_LOSSES:]
+    if len(последние) >= MAX_CONSECUTIVE_LOSSES and all(s == "loss" for s in последние):
+        return False, f"❌ {MAX_CONSECUTIVE_LOSSES} убыточных сделок подряд"
+    
+    # Проверка лимита сделок в час
+    try:
+        час_начала = datetime.fromisoformat(защита["час_начала"])
+        if (сейчас - час_начала).total_seconds() > 3600:
+            # Новый час
+            защита["сделок_за_час"] = 0
+            защита["час_начала"] = сейчас.isoformat()
+            сохранить_защиту(защита)
+        elif защита["сделок_за_час"] >= MAX_TRADES_PER_HOUR:
+            return False, f"⏰ Лимит сделок в час ({MAX_TRADES_PER_HOUR}) исчерпан"
+    except:
+        защита["час_начала"] = сейчас.isoformat()
+        защита["сделок_за_час"] = 0
+        сохранить_защиту(защита)
+    
+    return True, "✅ Торговля разрешена"
+
+def зарегистрировать_сделку_в_защите(исход):
+    """Регистрация исхода сделки в системе защиты"""
+    защита = загрузить_защиту()
+    сейчас = datetime.utcnow()
+    
+    # Обновляем счётчик сделок за час
+    защита["сделок_за_час"] += 1
+    
+    # Обновляем список последних сделок
+    защита["последние_сделки"].append(исход)
+    if len(защита["последние_сделки"]) > 10:
+        защита["последние_сделки"] = защита["последние_сделки"][-10:]
+    
+    # Обновляем дневной убыток
+    if исход == "loss":
+        # Примерный убыток: риск 7% от $200 = $14 на сделку
+        защита["дневной_убыток"] -= 14.0
+    elif исход == "win":
+        # Примерная прибыль: 1.5 × риск
+        защита["дневной_убыток"] += 21.0
+    
+    # Проверяем необходимость паузы
+    триггер_паузы = False
+    причина = ""
+    
+    if защита["дневной_убыток"] <= -MAX_DAILY_LOSS:
+        триггер_паузы = True
+        причина = f"Дневной убыток ${abs(защита['дневной_убыток']):.2f} > ${MAX_DAILY_LOSS}"
+    
+    последние = защита["последние_сделки"][-MAX_CONSECUTIVE_LOSSES:]
+    if len(последние) >= MAX_CONSECUTIVE_LOSSES and all(s == "loss" for s in последние):
+        триггер_паузы = True
+        причина = f"{MAX_CONSECUTIVE_LOSSES} убытков подряд"
+    
+    if триггер_паузы:
+        защита["пауза_до"] = (сейчас + timedelta(minutes=COOLDOWN_MINUTES)).isoformat()
+        защита["история_срабатываний"].append({
+            "время": сейчас.isoformat(),
+            "причина": причина,
+            "дневной_убыток": защита["дневной_убыток"]
+        })
+        logger.warning(f"[ЗАЩИТА] Активирована пауза! {причина}")
+    
+    сохранить_защиту(защита)
+    
+    if триггер_паузы:
+        # Отправляем уведомление
+        отправить_всем(
+            f"🛑 *ЗАЩИТА АКТИВИРОВАНА*\n"
+            f"*Причина:* {причина}\n"
+            f"*Дневной P&L:* ${защита['дневной_убыток']:.2f}\n"
+            f"*Пауза:* {COOLDOWN_MINUTES} мин (до {(сейчас + timedelta(minutes=COOLDOWN_MINUTES)).strftime('%H:%M')} МСК)\n"
+            f"*Сделки приостановлены*"
+        )
+    
+    return защита
+
+def получить_статус_защиты():
+    """Получение статуса защиты для отображения"""
+    защита = загрузить_защиту()
+    разрешено, причина = проверить_защиту()
+    
+    сейчас = datetime.utcnow()
+    статус = {
+        "торговля_разрешена": разрешено,
+        "причина": причина,
+        "дневной_pnl": round(защита["дневной_убыток"], 2),
+        "лимит_убытка": MAX_DAILY_LOSS,
+        "последовательных_убытков": sum(1 for s in защита["последние_сделки"][-MAX_CONSECUTIVE_LOSSES:] if s == "loss"),
+        "макс_последовательных": MAX_CONSECUTIVE_LOSSES,
+        "сделок_за_час": защита["сделок_за_час"],
+        "лимит_сделок_в_час": MAX_TRADES_PER_HOUR,
+        "пауза_активна": False
+    }
+    
+    if защита.get("пауза_до"):
+        try:
+            пауза_до = datetime.fromisoformat(защита["пауза_до"])
+            if сейчас < пауза_до:
+                статус["пауза_активна"] = True
+                статус["пауза_до"] = пауза_до.strftime("%H:%M:%S")
+                статус["осталось_минут"] = int((пауза_до - сейчас).total_seconds() / 60)
+        except:
+            pass
+    
+    return статус
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Генетический алгоритм
+# ══════════════════════════════════════════════════════════════════════════════
+
 GA_INTERVAL = 10
 GA_POPULATION = 20
 GA_GENERATIONS = 15
@@ -418,6 +598,12 @@ def применить_правила_уверенности(базовая_ув
         порог = min(0.95, порог + 0.05)
         причины.append("Режим повышенного риска (+0.05 к порогу)")
     
+    # Проверка защиты: после убытков повышаем порог
+    защита = загрузить_защиту()
+    if защита["дневной_убыток"] < -7.0:  # Если убыток больше $7
+        порог = max(порог, MIN_CONFIDENCE_FOR_TRADE)
+        причины.append(f"Защита: порог повышен до {int(порог*100)}% из-за убытков")
+    
     return round(max(0, min(1, уверенность)), 4), причины, round(порог, 4)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -639,19 +825,29 @@ def форматировать_портфель():
     победы = [t for t in сделки if t["исход"] == "win"]
     поражения = [t for t in сделки if t["исход"] == "loss"]
     винрейт = (len(победы) / len(сделки) * 100) if сделки else 0
+    защита = загрузить_защиту()
     return (
         f"📊 *Симулятор*\n"
         f"*Баланс:* ${сим['баланс']:.2f}\n"
         f"*P&L за день:* ${сим['дневной_pnl']:.2f}\n"
         f"*Сделок:* {len(сделки)} ({len(победы)}П/{len(поражения)}У)\n"
-        f"*Винрейт:* {винрейт:.0f}%"
+        f"*Винрейт:* {винрейт:.0f}%\n"
+        f"*Защита:* {'🛑 Активна' if защита.get('пауза_до') else '✅ Норм'} | Убыток: ${защита['дневной_убыток']:.2f}"
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# КОНВЕЙЕР СИГНАЛА
+# КОНВЕЙЕР СИГНАЛА (С ПРОВЕРКОЙ ЗАЩИТЫ)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def обработать_сигнал(сигнал, цена, rsi, тренд, atr, исход=None, отправлять=True, источник="webhook"):
+    # Проверка защиты перед сделкой
+    торговля_разрешена, причина_блокировки = проверить_защиту()
+    if not торговля_разрешена and источник != "симулятор":
+        logger.warning(f"[ЗАЩИТА] Сигнал отклонён: {причина_блокировки}")
+        if отправлять:
+            отправить_всем(f"🛑 *Сигнал отклонён*\n{причина_блокировки}")
+        return {"ошибка": причина_блокировки}, None
+    
     with блокировка:
         веса = загрузить_веса()
         правила = загрузить_правила()
@@ -690,6 +886,8 @@ def обработать_сигнал(сигнал, цена, rsi, тренд, a
         
         результат_га = None
         if исход is not None:
+            # Регистрируем в защите
+            зарегистрировать_сделку_в_защите(исход)
             новые_веса, фитнес = запустить_генетику_если_нужно(все_сделки, веса)
             if новые_веса != веса:
                 результат_га = {"обновлены": True, "фитнес": фитнес}
@@ -720,6 +918,7 @@ def создать_дневной_отчёт():
     with блокировка:
         сделки = загрузить_сделки()
         правила = загрузить_правила()
+    защита = загрузить_защиту()
     размеченные = [t for t in сделки if t.get("исход") in ("win", "loss")]
     победы = sum(1 for t in размеченные if t["исход"] == "win")
     винрейт = round(победы / len(размеченные) * 100) if размеченные else 0
@@ -727,11 +926,13 @@ def создать_дневной_отчёт():
         f"🌅 *Дневной отчёт XAUUSD*\n\n"
         f"*Сделок:* {len(сделки)} | *Размечено:* {len(размеченные)}\n"
         f"*Винрейт:* {винрейт}%\n"
-        f"*Порог:* {правила.get('порог_уверенности')}"
+        f"*Порог:* {правила.get('порог_уверенности')}\n"
+        f"*Защита:* {'🛑 Активна' if защита.get('пауза_до') else '✅ Норма'}\n"
+        f"*Дневной P&L:* ${защита['дневной_убыток']:.2f}"
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# АВТО-СИГНАЛЫ
+# АВТО-СИГНАЛЫ (С УЧЁТОМ ЗАЩИТЫ)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def авто_сигналы():
@@ -739,6 +940,13 @@ def авто_сигналы():
     while True:
         try:
             time.sleep(300)
+            
+            # Проверка защиты
+            торговля_разрешена, причина = проверить_защиту()
+            if not торговля_разрешена:
+                logger.info(f"[АВТО] Сигналы приостановлены: {причина}")
+                continue
+            
             цена_данные = получить_цену_xau()
             if not цена_данные:
                 continue
@@ -753,6 +961,20 @@ def авто_сигналы():
                 обработать_сигнал(тренд, цена, индикаторы["rsi"], тренд, индикаторы["atr"], источник="авто")
         except Exception as e:
             logger.error(f"Авто-сигнал ошибка: {e}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ПЛАНИРОВЩИК СБРОСА ЗАЩИТЫ
+# ══════════════════════════════════════════════════════════════════════════════
+
+def планировщик_сброса_защиты():
+    """Сброс дневного счётчика в 00:00 UTC"""
+    while True:
+        сейчас = datetime.utcnow()
+        цель = сейчас.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        ожидание = (цель - сейчас).total_seconds()
+        time.sleep(ожидание)
+        сбросить_ежедневную_защиту()
+        logger.info("[ЗАЩИТА] Новый день — счётчики сброшены")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TELEGRAM КОМАНДЫ
@@ -788,7 +1010,7 @@ def обработать_команду(сообщение):
                 [{"text": "🟢 BUY", "callback_data": "menu_buy"}, {"text": "🔴 SELL", "callback_data": "menu_sell"}],
                 [{"text": "💰 Цена", "callback_data": "menu_price"}, {"text": "📊 Статус", "callback_data": "menu_status"}],
                 [{"text": "🧠 AI", "callback_data": "menu_ask"}, {"text": "📈 Отчёт", "callback_data": "menu_report"}],
-                [{"text": "🧪 Сим", "callback_data": "menu_sim"}, {"text": "❓ Помощь", "callback_data": "menu_help"}]
+                [{"text": "🧪 Сим", "callback_data": "menu_sim"}, {"text": "🛡 Защита", "callback_data": "menu_protection"}]
             ]
         }
         отправить_сообщение(
@@ -798,9 +1020,30 @@ def обработать_команду(сообщение):
             "• /price — цена\n"
             "• /sim_buy или /sim_sell\n"
             "• /status /portfolio /report\n"
+            "• /protection — статус защиты\n"
+            "• /reset_protection — сброс защиты\n"
             "• /ask вопрос",
             чат_id=чат_id, клавиатура=клавиатура
         )
+        return True
+    
+    if команда == "/protection":
+        статус = получить_статус_защиты()
+        отправить_сообщение(
+            f"🛡 *Защита от убытков*\n\n"
+            f"*Торговля:* {'✅ Разрешена' if статус['торговля_разрешена'] else '🛑 ЗАПРЕЩЕНА'}\n"
+            f"*Причина:* {статус['причина']}\n"
+            f"*Дневной P&L:* ${статус['дневной_pnl']:.2f} (лимит: -${MAX_DAILY_LOSS})\n"
+            f"*Убытков подряд:* {статус['последовательных_убытков']}/{MAX_CONSECUTIVE_LOSSES}\n"
+            f"*Сделок за час:* {статус['сделок_за_час']}/{MAX_TRADES_PER_HOUR}\n"
+            f"*Пауза:* {'⚠️ Активна' if статус.get('пауза_активна') else '✅ Нет'}",
+            чат_id=чат_id
+        )
+        return True
+    
+    if команда == "/reset_protection":
+        сбросить_ежедневную_защиту()
+        отправить_сообщение("🛡 *Защита сброшена*\nДневные счётчики обнулены, торговля разрешена.", чат_id=чат_id)
         return True
     
     if команда in ("/buy", "/sell"):
@@ -846,11 +1089,13 @@ def обработать_команду(сообщение):
         with блокировка:
             сделки = загрузить_сделки()
             веса = загрузить_веса()
+        защита = загрузить_защиту()
         размеченные = [t for t in сделки if t.get("исход") in ("win", "loss")]
         винрейт = round(sum(1 for t in размеченные if t["исход"] == "win") / len(размеченные) * 100) if размеченные else 0
         отправить_сообщение(
             f"📊 *Статус*\nСделок: {len(сделки)}\nРазмечено: {len(размеченные)}\nВинрейт: {винрейт}%\n"
-            f"Веса: {', '.join(f'{k}={v:.2f}' for k,v in веса.items())}",
+            f"Веса: {', '.join(f'{k}={v:.2f}' for k,v in веса.items())}\n"
+            f"Защита: {'🛑' if защита.get('пауза_до') else '✅'} | P&L: ${защита['дневной_убыток']:.2f}",
             чат_id=чат_id
         )
         return True
@@ -885,6 +1130,15 @@ def обработать_колбэк(колбэк):
         отправить_сообщение(f"📊 Сделок: {len(сделки)}", чат_id=чат_id)
     elif данные == "menu_report":
         отправить_сообщение(создать_дневной_отчёт(), чат_id=чат_id)
+    elif данные == "menu_protection":
+        статус = получить_статус_защиты()
+        отправить_сообщение(
+            f"🛡 *Защита*\n"
+            f"Торговля: {'✅' if статус['торговля_разрешена'] else '🛑'}\n"
+            f"P&L: ${статус['дневной_pnl']:.2f}\n"
+            f"Пауза: {'⚠️ Да' if статус.get('пауза_активна') else '✅ Нет'}",
+            чат_id=чат_id
+        )
     elif данные in ("menu_buy", "menu_sell"):
         сторона = "BUY" if данные == "menu_buy" else "SELL"
         отправить_сообщение(f"Введите: /{'buy' if сторона=='BUY' else 'sell'} ЦЕНА RSI ТРЕНД ATR", чат_id=чат_id)
@@ -893,7 +1147,7 @@ def обработать_колбэк(колбэк):
     elif данные == "menu_sim":
         отправить_сообщение("/sim_buy или /sim_sell ЦЕНА RSI ТРЕНД ATR", чат_id=чат_id)
     elif данные == "menu_help":
-        отправить_сообщение("/buy /sell /price /status /portfolio /report /ask", чат_id=чат_id)
+        отправить_сообщение("/buy /sell /price /status /portfolio /report /ask /protection", чат_id=чат_id)
     elif ":" in данные:
         действие, значение = данные.split(":", 1)
         if действие in ("win", "loss"):
@@ -902,6 +1156,7 @@ def обработать_колбэк(колбэк):
                 for t in сделки:
                     if t.get("id") == значение:
                         t["исход"] = действие
+                        зарегистрировать_сделку_в_защите(действие)
                         break
                 сохранить_сделки(сделки)
             ответить_на_колбэк(колбэк_id, "✅" if действие == "win" else "❌")
@@ -909,7 +1164,7 @@ def обработать_колбэк(колбэк):
     ответить_на_колбэк(колбэк_id)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FLASK + ГЛАВНАЯ СТРАНИЦА С ГРАФИКОМ TRADINGVIEW (МОСКОВСКОЕ ВРЕМЯ)
+# FLASK + ГЛАВНАЯ СТРАНИЦА
 # ══════════════════════════════════════════════════════════════════════════════
 
 app = Flask(__name__)
@@ -939,163 +1194,46 @@ app = Flask(__name__)
             min-height: 100vh;
             padding: 16px;
         }
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-        }
-
-        /* Заголовок с ценой */
+        .container { max-width: 1000px; margin: 0 auto; }
         .price-header {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px 20px;
+            display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 12px;
         }
-        .price-main h1 {
-            font-size: 1.8em;
-            font-weight: 700;
-            color: #fff;
-        }
-        .price-change {
-            font-size: 0.9em;
-            color: var(--green);
-            font-weight: 500;
-        }
+        .price-main h1 { font-size: 1.8em; font-weight: 700; color: #fff; }
+        .price-change { font-size: 0.9em; color: var(--green); font-weight: 500; }
         .price-change.down { color: var(--red); }
-        .price-info {
-            text-align: right;
-            color: var(--sub);
-            font-size: 0.8em;
-            line-height: 1.5;
-        }
-
-        /* Сетка Рынок + Торговля */
-        .top-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 12px;
-        }
+        .price-info { text-align: right; color: var(--sub); font-size: 0.8em; line-height: 1.5; }
+        .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
         @media (max-width: 600px) { .top-grid { grid-template-columns: 1fr; } }
-
-        .card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 14px 16px;
-        }
-        .card h2 {
-            font-size: 0.8em;
-            text-transform: uppercase;
-            color: var(--sub);
-            letter-spacing: 1.5px;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-        .stats-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-            font-size: 0.9em;
-        }
-        .stat-label { color: var(--sub); }
-        .stat-value { font-weight: 600; }
-        .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 10px;
-            font-size: 0.8em;
-            font-weight: 600;
-        }
-        .badge-bear { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-        .badge-sell { background: rgba(248, 81, 73, 0.1); color: var(--red); }
-        .badge-green { background: rgba(63, 185, 80, 0.15); color: var(--green); }
-
-        /* AI Status */
-        .ai-status {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 0.9em;
-        }
-        .ai-dot {
-            width: 8px; height: 8px;
-            background: var(--green);
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-
-        /* Правила */
-        .rules-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-        .rule-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.85em;
-        }
-        .rule-num {
-            width: 20px; height: 20px;
-            border-radius: 5px;
-            background: rgba(210, 153, 29, 0.15);
-            color: var(--gold);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.7em; font-weight: 700;
-            flex-shrink: 0;
-        }
-        .flex-note {
-            margin-top: 8px;
-            font-size: 0.75em;
-            color: var(--sub);
-        }
-
-        /* ГРАФИК TRADINGVIEW */
-        .chart-wrapper {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            overflow: hidden;
-            margin-bottom: 12px;
-            height: 450px;
-        }
-        .chart-wrapper iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            color: var(--sub);
-            font-size: 0.75em;
-            padding: 16px;
-        }
-        .footer a {
-            color: var(--gold);
-            text-decoration: none;
-        }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+        .card h2 { font-size: 0.8em; text-transform: uppercase; color: var(--sub); letter-spacing: 1.5px; margin-bottom: 10px; font-weight: 600; }
+        .stats-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.9em; }
+        .stat-label { color: var(--sub); } .stat-value { font-weight: 600; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.8em; font-weight: 600; }
+        .badge-bear { background: rgba(248,81,73,0.15); color: var(--red); }
+        .badge-sell { background: rgba(248,81,73,0.1); color: var(--red); }
+        .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
+        .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
+        .ai-status { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; font-size: 0.9em; }
+        .ai-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+        .ai-dot.blocked { background: var(--red); }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+        .rules-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .rule-item { display: flex; align-items: center; gap: 8px; font-size: 0.85em; }
+        .rule-num { width: 20px; height: 20px; border-radius: 5px; background: rgba(210,153,29,0.15); color: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 0.7em; font-weight: 700; flex-shrink: 0; }
+        .flex-note { margin-top: 8px; font-size: 0.75em; color: var(--sub); }
+        .chart-wrapper { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 12px; height: 450px; }
+        .chart-wrapper iframe { width: 100%; height: 100%; border: none; }
+        .protection-bar { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .protection-bar.blocked { border-color: var(--red); background: rgba(248,81,73,0.05); }
+        .footer { text-align: center; color: var(--sub); font-size: 0.75em; padding: 16px; }
+        .footer a { color: var(--gold); text-decoration: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Цена -->
         <div class="price-header">
             <div>
                 <h1 id="price">${{ price }}</h1>
@@ -1103,11 +1241,17 @@ app = Flask(__name__)
             </div>
             <div class="price-info">
                 <div>Деп: $200 | Лот: 0.02 | Риск: 7% ($14)</div>
+                <div>🛡 Лимит убытка: ${{ max_loss }}</div>
                 <div id="time">Обновлено: {{ time }} (МСК)</div>
             </div>
         </div>
 
-        <!-- Рынок + Торговля -->
+        <!-- Защита -->
+        <div class="protection-bar {{ protection_class }}" id="protection-bar">
+            <span>🛡 <strong>Защита:</strong> <span id="protection-status">{{ protection_status }}</span></span>
+            <span>Дневной P&L: <span id="daily-pnl">${{ daily_pnl }}</span></span>
+        </div>
+
         <div class="top-grid">
             <div class="card">
                 <h2>📊 Рынок</h2>
@@ -1123,14 +1267,12 @@ app = Flask(__name__)
             </div>
         </div>
 
-        <!-- AI Status -->
-        <div class="ai-status">
-            <div class="ai-dot"></div>
-            <span>✅ Готов к торговле | Данных: <span id="data-count">{{ data_count }}</span></span>
+        <div class="ai-status" id="ai-status">
+            <div class="ai-dot {{ ai_dot_class }}" id="ai-dot"></div>
+            <span id="ai-status-text">✅ Готов к торговле | Данных: <span id="data-count">{{ data_count }}</span></span>
         </div>
 
-        <!-- 8 Правил -->
-        <div class="card" style="margin-bottom:12px;">
+        <div class="card">
             <h2>📋 8 Правил входа</h2>
             <div class="rules-grid">
                 <div class="rule-item"><span class="rule-num">1</span> ATR $10–25</div>
@@ -1145,23 +1287,15 @@ app = Flask(__name__)
             <div class="flex-note">⚠️ Гибкость: RSI не совпал, но 7/8 правил — вход</div>
         </div>
 
-        <!-- ГРАФИК TRADINGVIEW (МОСКОВСКОЕ ВРЕМЯ) -->
         <div class="chart-wrapper">
             <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=XAUUSD&interval=5&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=f1f3f6&studies=[]&theme=dark&style=1&timezone=Europe%2FMoscow&withdateranges=1&hideideas=1&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=ru&utm_source=localhost&utm_medium=widget&utm_campaign=chart&utm_term=XAUUSD"
-                id="tradingview_chart"
-                scrolling="no"
-                allowtransparency="true"
-                frameborder="0">
-            </iframe>
+                id="tradingview_chart" scrolling="no" allowtransparency="true" frameborder="0"></iframe>
         </div>
 
-        <div class="footer">
-            XAU AI Trader © 2024 · Работает на Render · <a href="/menu">Меню</a>
-        </div>
+        <div class="footer">XAU AI Trader © 2024 · Работает на Render · <a href="/menu">Меню</a></div>
     </div>
 
     <script>
-        // Живое обновление каждые 5 секунд
         setInterval(async () => {
             try {
                 const r = await fetch('/api/dashboard');
@@ -1174,6 +1308,22 @@ app = Flask(__name__)
                 document.getElementById('trades').textContent = d.trades;
                 document.getElementById('winrate').textContent = d.winrate + '%';
                 document.getElementById('data-count').textContent = d.data_count;
+                document.getElementById('daily-pnl').textContent = '$' + d.daily_pnl;
+                document.getElementById('protection-status').textContent = d.protection_status;
+                
+                const bar = document.getElementById('protection-bar');
+                const dot = document.getElementById('ai-dot');
+                const statusText = document.getElementById('ai-status-text');
+                
+                if (d.blocked) {
+                    bar.className = 'protection-bar blocked';
+                    dot.className = 'ai-dot blocked';
+                    statusText.innerHTML = '🛑 Торговля приостановлена | Данных: <span id="data-count">' + d.data_count + '</span>';
+                } else {
+                    bar.className = 'protection-bar';
+                    dot.className = 'ai-dot';
+                    statusText.innerHTML = '✅ Готов к торговле | Данных: <span id="data-count">' + d.data_count + '</span>';
+                }
             } catch(e) {}
         }, 5000);
     </script>
@@ -1182,7 +1332,6 @@ app = Flask(__name__)
 
 @app.route("/")
 def главная():
-    """Главная страница с дашбордом и графиком TradingView (МСК)"""
     москва = datetime.utcnow() + timedelta(hours=3)
     цена = получить_цену_xau()
     if цена:
@@ -1197,6 +1346,9 @@ def главная():
     
     with блокировка:
         сделки = загрузить_сделки()
+    защита = загрузить_защиту()
+    статус_защиты = получить_статус_защиты()
+    
     размеченные = [t for t in сделки if t.get("исход") in ("win", "loss")]
     винрейт = round(sum(1 for t in размеченные if t["исход"] == "win") / len(размеченные) * 100) if размеченные else 0
     
@@ -1209,7 +1361,12 @@ def главная():
         confidence=random.randint(65, 78),
         trades=len(сделки),
         winrate=винрейт,
-        data_count=len(загрузить_инсайты())
+        data_count=len(загрузить_инсайты()),
+        max_loss=f"{MAX_DAILY_LOSS:.0f}",
+        protection_status="✅ Активна" if статус_защиты["торговля_разрешена"] else "🛑 ПАУЗА",
+        protection_class="blocked" if not статус_защиты["торговля_разрешена"] else "",
+        ai_dot_class="blocked" if not статус_защиты["торговля_разрешена"] else "",
+        daily_pnl=f"{защита['дневной_убыток']:.2f}"
     )
 
 @app.route("/api/dashboard")
@@ -1218,10 +1375,13 @@ def дашборд_api():
     цена = получить_цену_xau()
     with блокировка:
         сделки = загрузить_сделки()
+    защита = загрузить_защиту()
+    статус = получить_статус_защиты()
+    
     размеченные = [t for t in сделки if t.get("исход") in ("win", "loss")]
     винрейт = round(sum(1 for t in размеченные if t["исход"] == "win") / len(размеченные) * 100) if размеченные else 0
-    
     изм = цена.get("изменение_процент", 0.55) if цена else 0.55
+    
     return jsonify({
         "price": f"{цена['текущая']:,.2f}" if цена else "4735.93",
         "change_text": f"{изм:+.2f}%",
@@ -1230,7 +1390,10 @@ def дашборд_api():
         "confidence": random.randint(65, 78),
         "trades": len(сделки),
         "winrate": винрейт,
-        "data_count": len(загрузить_инсайты())
+        "data_count": len(загрузить_инсайты()),
+        "daily_pnl": f"{защита['дневной_убыток']:.2f}",
+        "protection_status": "✅ Активна" if статус["торговля_разрешена"] else "🛑 ПАУЗА",
+        "blocked": not статус["торговля_разрешена"]
     })
 
 @app.route("/ping")
@@ -1240,12 +1403,9 @@ def пинг():
 @app.route("/menu")
 def меню():
     return jsonify({
-        "команды": ["/buy", "/sell", "/price", "/sim_buy", "/sim_sell", "/status", "/portfolio", "/report", "/ask"],
-        "правила": [
-            "ATR $10-25", "H4/H1 в одну сторону", "EMA < $6.5",
-            "RSI >48 BUY / <52 SELL", "Без новостей", "Не первые 30 мин",
-            "ИИ >70%", "Риск ≤7%"
-        ]
+        "команды": ["/buy", "/sell", "/price", "/sim_buy", "/sim_sell", "/status", "/portfolio", "/report", "/protection", "/reset_protection", "/ask"],
+        "правила": ["ATR $10-25", "H4/H1 в одну сторону", "EMA < $6.5", "RSI >48 BUY / <52 SELL", "Без новостей", "Не первые 30 мин", "ИИ >70%", "Риск ≤7%"],
+        "защита": f"Лимит убытка: ${MAX_DAILY_LOSS}, пауза: {COOLDOWN_MINUTES} мин, макс убытков подряд: {MAX_CONSECUTIVE_LOSSES}"
     })
 
 @app.route("/webhook", methods=["POST"])
@@ -1259,6 +1419,8 @@ def вебхук():
         данные["тренд"], данные["atr"],
         исход=данные.get("исход"), источник="webhook"
     )
+    if isinstance(сделка, dict) and "ошибка" in сделка:
+        return jsonify({"статус": "заблокировано", "причина": сделка["ошибка"]}), 403
     return jsonify({"статус": "ok", "уверенность": сделка["уверенность"], "решение": сделка["решение"]})
 
 @app.route("/stats")
@@ -1266,13 +1428,23 @@ def статистика():
     with блокировка:
         сделки = загрузить_сделки()
         веса = загрузить_веса()
+    защита = загрузить_защиту()
     размеченные = [t for t in сделки if t.get("исход") in ("win", "loss")]
     return jsonify({
         "сделок": len(сделки),
         "размечено": len(размеченные),
         "винрейт": round(sum(1 for t in размеченные if t["исход"] == "win") / len(размеченные), 3) if размеченные else None,
-        "веса": веса
+        "веса": веса,
+        "защита": {
+            "дневной_pnl": защита["дневной_убыток"],
+            "пауза": защита.get("пауза_до") is not None,
+            "лимит_убытка": MAX_DAILY_LOSS
+        }
     })
+
+@app.route("/protection")
+def защита_api():
+    return jsonify(получить_статус_защиты())
 
 @app.route("/report")
 def отчёт():
@@ -1306,12 +1478,13 @@ def установить_вебхук():
 def запуск():
     потоки = [
         threading.Thread(target=авто_сигналы, daemon=True),
+        threading.Thread(target=планировщик_сброса_защиты, daemon=True, name="СбросЗащиты"),
         threading.Thread(target=lambda: (time.sleep(3600), эволюция_инсайтов(загрузить_сделки()))[0] or [time.sleep(3600) for _ in iter(int, 1)], daemon=True),
         threading.Thread(target=lambda: (time.sleep(86400), отправить_всем(создать_дневной_отчёт()))[0] or [time.sleep(86400) for _ in iter(int, 1)], daemon=True)
     ]
     for п in потоки:
         п.start()
-    logger.info(f"XAU AI Trader на порту {PORT}")
+    logger.info(f"XAU AI Trader на порту {PORT} | Защита: макс убыток ${MAX_DAILY_LOSS}")
 
 if __name__ == "__main__":
     запуск()
