@@ -1,26 +1,7 @@
 """
 XAUUSD AI Trading Bot — single-file Flask app for GitHub → Render.
 Все сообщения и интерфейс — на русском языке.
-
-Возможности:
-  • Webhook /webhook со скорингом сигнала через ИИ-веса
-  • Генетический алгоритм каждые 10 размеченных сделок
-  • Парсинг 100+ финансовых источников каждый час → база знаний
-  • Парсинг 16+ обучающих сайтов каждые 3 часа
-  • Finnhub API для реальных новостей и ЦЕНЫ XAUUSD 24/7
-  • /price команда — текущая цена золота с рынка
-  • /menu — меню с кнопками
-  • /users — список пользователей
-  • Авто-сигналы в Telegram при уверенности >70%
-  • DeepSeek знает реальную цену XAUUSD
-  • Авто-перестройка правил, ежечасный self-tuning порога уверенности
-  • Telegram-бот: команды на русском + свободный чат через DeepSeek
-  • Проактивные сигналы при уверенности > 85%
-  • Автогенерация Pine Script, когда найден прибыльный паттерн (>60% winrate)
-  • Динамические Telegram-команды для проверенных паттернов (>20 сделок, >60%)
-  • Ежедневный отчёт в 08:00 UTC
-  • Симулятор торговли: /sim_buy, /sim_sell, /portfolio
-  • Поддержка нескольких пользователей (CHAT_IDS через запятую)
+Приложение index.html на главной странице.
 """
 
 import json, logging, math, os, random, re, threading, time, uuid, xml.etree.ElementTree as ET
@@ -127,7 +108,7 @@ def load_simulator(): return _read_json(SIM_FILE, {"balance":10000,"trades":[],"
 def save_simulator(s): _write_json(SIM_FILE, s)
 
 # ────────────────────────────────────────────────────────────────────────────
-# Telegram (с поддержкой нескольких пользователей)
+# Telegram
 # ────────────────────────────────────────────────────────────────────────────
 
 TG_API = "https://api.telegram.org/bot{token}/{method}"
@@ -1217,28 +1198,10 @@ def handle_callback(cb):
 app = Flask(__name__)
 app.secret_key = SESSION_SECRET
 
-HOMEPAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>XAUUSD ИИ-бот</title>
-<style>body{font-family:system-ui;max-width:880px;margin:2rem auto;padding:0 1rem;color:#1f2937}
-h1{margin:.2rem 0}p.sub{color:#6b7280}pre{background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:8px;overflow-x:auto;font-size:13px}
-code{background:#f1f5f9;padding:2px 6px;border-radius:4px}a{color:#2563eb}
-.badge{display:inline-block;padding:.2rem .5rem;border-radius:6px;background:#10b981;color:#fff;font-size:.8rem}
-</style></head><body><h1>XAUUSD ИИ-бот <span class="badge">онлайн</span></h1>
-<p class="sub">Последние {{ count }} событий · <a href="/stats">статистика</a> · <a href="/learn">правила</a> · <a href="/knowledge">база знаний</a></p>
-{% if lines %}<pre>{{ '\n'.join(lines) }}</pre>{% else %}<p><i>Лог пока пуст.</i></p>{% endif %}</body></html>"""
-
-def _tail(path, n=15):
-    if not os.path.exists(path): return []
-    with open(path,"rb") as f:
-        try:
-            f.seek(0,os.SEEK_END); size = f.tell(); data = b""
-            while size>0 and data.count(b"\n")<=n: step=min(2048,size); size-=step; f.seek(size); data=f.read(step)+data
-        except: f.seek(0); data=f.read()
-    return data.decode("utf-8",errors="replace").splitlines()[-n:]
-
+# ★ Главная страница — теперь приложение index.html!
 @app.route("/")
 def home():
-    lines = _tail(LOG_FILE,15)
-    return render_template_string(HOMEPAGE, lines=lines, count=len(lines))
+    return app.send_static_file('index.html')
 
 @app.route("/ping")
 def ping(): return jsonify({"status":"alive","time":datetime.utcnow().isoformat()+"Z"})
