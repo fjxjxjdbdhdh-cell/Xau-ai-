@@ -909,7 +909,7 @@ def обработать_колбэк(колбэк):
     ответить_на_колбэк(колбэк_id)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FLASK + ГЛАВНАЯ СТРАНИЦА С ГРАФИКОМ TRADINGVIEW
+# FLASK + ГЛАВНАЯ СТРАНИЦА С ГРАФИКОМ TRADINGVIEW (МОСКОВСКОЕ ВРЕМЯ)
 # ══════════════════════════════════════════════════════════════════════════════
 
 app = Flask(__name__)
@@ -1103,7 +1103,7 @@ app = Flask(__name__)
             </div>
             <div class="price-info">
                 <div>Деп: $200 | Лот: 0.02 | Риск: 7% ($14)</div>
-                <div id="time">Обновлено: {{ time }}</div>
+                <div id="time">Обновлено: {{ time }} (МСК)</div>
             </div>
         </div>
 
@@ -1145,9 +1145,9 @@ app = Flask(__name__)
             <div class="flex-note">⚠️ Гибкость: RSI не совпал, но 7/8 правил — вход</div>
         </div>
 
-        <!-- ГРАФИК TRADINGVIEW (как на 4 фото) -->
+        <!-- ГРАФИК TRADINGVIEW (МОСКОВСКОЕ ВРЕМЯ) -->
         <div class="chart-wrapper">
-            <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=XAUUSD&interval=5&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=f1f3f6&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&withdateranges=1&hideideas=1&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=ru&utm_source=localhost&utm_medium=widget&utm_campaign=chart&utm_term=XAUUSD"
+            <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_chart&symbol=XAUUSD&interval=5&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=f1f3f6&studies=[]&theme=dark&style=1&timezone=Europe%2FMoscow&withdateranges=1&hideideas=1&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=ru&utm_source=localhost&utm_medium=widget&utm_campaign=chart&utm_term=XAUUSD"
                 id="tradingview_chart"
                 scrolling="no"
                 allowtransparency="true"
@@ -1169,7 +1169,7 @@ app = Flask(__name__)
                 document.getElementById('price').textContent = '$' + d.price;
                 document.getElementById('change').textContent = d.change_text;
                 document.getElementById('change').className = 'price-change ' + d.change_class;
-                document.getElementById('time').textContent = 'Обновлено: ' + d.time;
+                document.getElementById('time').textContent = 'Обновлено: ' + d.time + ' (МСК)';
                 document.getElementById('conf').textContent = d.confidence + '%';
                 document.getElementById('trades').textContent = d.trades;
                 document.getElementById('winrate').textContent = d.winrate + '%';
@@ -1182,7 +1182,8 @@ app = Flask(__name__)
 
 @app.route("/")
 def главная():
-    """Главная страница с дашбордом и графиком TradingView"""
+    """Главная страница с дашбордом и графиком TradingView (МСК)"""
+    москва = datetime.utcnow() + timedelta(hours=3)
     цена = получить_цену_xau()
     if цена:
         цена_текст = f"{цена['текущая']:,.2f}"
@@ -1204,7 +1205,7 @@ def главная():
         price=цена_текст,
         change=изм_текст,
         change_class=класс,
-        time=datetime.utcnow().strftime("%H:%M:%S"),
+        time=москва.strftime("%H:%M:%S"),
         confidence=random.randint(65, 78),
         trades=len(сделки),
         winrate=винрейт,
@@ -1213,6 +1214,7 @@ def главная():
 
 @app.route("/api/dashboard")
 def дашборд_api():
+    москва = datetime.utcnow() + timedelta(hours=3)
     цена = получить_цену_xau()
     with блокировка:
         сделки = загрузить_сделки()
@@ -1224,7 +1226,7 @@ def дашборд_api():
         "price": f"{цена['текущая']:,.2f}" if цена else "4735.93",
         "change_text": f"{изм:+.2f}%",
         "change_class": "" if изм >= 0 else "down",
-        "time": datetime.utcnow().strftime("%H:%M:%S"),
+        "time": москва.strftime("%H:%M:%S"),
         "confidence": random.randint(65, 78),
         "trades": len(сделки),
         "winrate": винрейт,
