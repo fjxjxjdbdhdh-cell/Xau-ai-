@@ -1199,13 +1199,15 @@ app = Flask(__name__)
 app.secret_key = SESSION_SECRET
 
 # ★ Главная страница — теперь приложение index.html!
-@app.route("/")
-def home():
-    return app.send_static_file('index.html')
+
 
 @app.route("/ping")
 def ping(): return jsonify({"status":"alive","time":datetime.utcnow().isoformat()+"Z"})
-
+@app.route("/")
+def home():
+    import os
+    return open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'index.html'), 'r', encoding='utf-8').read()
+    
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json(silent=True)
