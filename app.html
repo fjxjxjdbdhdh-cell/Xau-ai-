@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="XAU AI">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/emoji/96/gold-bars-emoji.png">
+    <title>XAU AI Trader</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0d1117; color: #e6edf3; font-family: -apple-system, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        .header { background: #161b22; padding: 8px 12px; text-align: center; border-bottom: 1px solid #30363d; }
+        .header h1 { font-size: 16px; color: #f0b90b; }
+        .price-row { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 4px 0; }
+        .price { font-size: 24px; font-weight: bold; }
+        .price.up { color: #00ff88; } .price.down { color: #ff1744; }
+        .change { font-size: 14px; padding: 2px 8px; border-radius: 8px; }
+        .change.up { background: #00ff8822; color: #00ff88; } .change.down { background: #ff174422; color: #ff1744; }
+        .indicators { display: flex; gap: 6px; padding: 4px 8px; font-size: 11px; flex-wrap: wrap; justify-content: center; }
+        .ind { background: #1a1f2e; padding: 4px 8px; border-radius: 8px; }
+        .ind .val { font-weight: bold; } .ind .val.bull { color: #00ff88; } .ind .val.bear { color: #ff1744; }
+        .tabs { display: flex; background: #161b22; border-bottom: 1px solid #30363d; }
+        .tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; }
+        .tab.active { color: #f0b90b; border-bottom: 2px solid #f0b90b; }
+        .content { flex: 1; overflow-y: auto; }
+        .chart { height: 280px; }
+        .chart iframe { width: 100%; height: 100%; border: none; }
+        .trade-form { padding: 16px; }
+        .trade-form input { width: 100%; padding: 12px; margin: 6px 0; background: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 8px; font-size: 16px; }
+        .trade-form .row { display: flex; gap: 8px; }
+        .trade-form .row input { flex: 1; }
+        .trade-form .btn-row { display: flex; gap: 8px; margin-top: 12px; }
+        .trade-form .btn-row button { flex: 1; padding: 16px; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; color: white; cursor: pointer; }
+        .btn-buy { background: #00c853; } .btn-sell { background: #ff1744; }
+        .chat { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .msg { padding: 8px 12px; border-radius: 12px; max-width: 85%; font-size: 13px; line-height: 1.4; }
+        .msg.ai { background: #1a1f2e; align-self: flex-start; }
+        .msg.user { background: #7c3aed; align-self: flex-end; }
+        .controls { padding: 8px; display: flex; gap: 6px; background: #161b22; border-top: 1px solid #30363d; }
+        .controls input { flex: 1; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 20px; font-size: 14px; }
+        .controls button { padding: 10px 14px; background: #f0b90b; border: none; border-radius: 20px; color: #000; font-weight: bold; cursor: pointer; }
+        .stats { padding: 16px; }
+        .stat-card { background: #1a1f2e; padding: 14px; margin: 6px 0; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .stat-card .val { font-size: 18px; font-weight: bold; color: #00ff88; }
+        input::placeholder { color: #484f58; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 XAU AI Trader</h1>
+        <div class="price-row">
+            <span class="price" id="price">--</span>
+            <span class="change" id="change">--</span>
+        </div>
+        <div class="indicators">
+            <div class="ind">Bias <span class="val" id="bias">--</span></div>
+            <div class="ind">Signal <span class="val" id="signal">--</span></div>
+            <div class="ind">Conf <span class="val" id="conf">--</span></div>
+        </div>
+    </div>
+    
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('chart')">📊 График</div>
+        <div class="tab" onclick="showTab('trade')">💰 Сделка</div>
+        <div class="tab" onclick="showTab('chat')">💬 AI</div>
+        <div class="tab" onclick="showTab('stats')">📈 Статы</div>
+    </div>
+    
+    <div class="content" id="content">
+        <div id="tab-chart" class="chart">
+            <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=XAUUSD&interval=5&theme=dark&style=1&locale=ru&width=100%&height=100%"></iframe>
+        </div>
+        <div id="tab-trade" class="trade-form" style="display:none;">
+            <input type="number" id="t_price" placeholder="Цена XAUUSD" step="0.01">
+            <input type="number" id="t_rsi" placeholder="RSI" value="50">
+            <input type="number" id="t_atr" placeholder="ATR" value="10">
+            <div class="row">
+                <input type="text" id="t_sl" placeholder="SL ($)">
+                <input type="text" id="t_tp" placeholder="TP ($)">
+            </div>
+            <div class="btn-row">
+                <button class="btn-buy" onclick="sendTrade('BUY')">🟢 BUY</button>
+                <button class="btn-sell" onclick="sendTrade('SELL')">🔴 SELL</button>
+            </div>
+            <div id="trade-result" style="margin-top:10px;text-align:center;"></div>
+        </div>
+        <div id="tab-chat" class="chat" style="display:none;"></div>
+        <div id="tab-stats" class="stats" style="display:none;"></div>
+    </div>
+    
+    <div class="controls">
+        <input type="text" id="msg_input" placeholder="Спроси AI...">
+        <button onclick="sendChat()">▶</button>
+    </div>
+
+    <script>
+        const API = 'https://xau-ai.onrender.com';
+        const CHAT_ID = '5246379098';
+        let priceHistory = [];
+        
+        function showTab(name) {
+            document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', t.textContent.includes({'chart':'График','trade':'Сделка','chat':'AI','stats':'Статы'}[name])));
+            document.querySelectorAll('#content > div').forEach(d => d.style.display = 'none');
+            document.getElementById('tab-' + name).style.display = name === 'chat' ? 'flex' : 'block';
+            if (name === 'stats') loadStats();
+        }
+        
+        async function loadStats() {
+            try {
+                const r = await fetch(API + '/stats');
+                const d = await r.json();
+                document.getElementById('tab-stats').innerHTML = `
+                    <div class="stat-card"><span>Всего сделок</span><span class="val">${d.total_trades || 0}</span></div>
+                    <div class="stat-card"><span>Размечено</span><span class="val">${d.labeled || 0}</span></div>
+                    <div class="stat-card"><span>Винрейт</span><span class="val">${((d.winrate_overall || 0) * 100).toFixed(0)}%</span></div>
+                    <div class="stat-card"><span>Уверенность</span><span class="val">${((d.average_confidence || 0) * 100).toFixed(0)}%</span></div>
+                `;
+                if (d.weights) {
+                    document.getElementById('bias').textContent = (d.winrate_overall > 0.5 ? '📈' : '📉');
+                    document.getElementById('signal').textContent = (d.winrate_overall > 0.5 ? 'BUY' : 'SELL');
+                    document.getElementById('conf').textContent = ((d.average_confidence || 0) * 100).toFixed(0) + '%';
+                }
+            } catch(e) {}
+        }
+        
+        async function sendTrade(signal) {
+            const price = document.getElementById('t_price').value;
+            const rsi = document.getElementById('t_rsi').value;
+            const atr = document.getElementById('t_atr').value;
+            const sl = document.getElementById('t_sl').value || null;
+            const tp = document.getElementById('t_tp').value || null;
+            
+            if (!price) { alert('Введи цену!'); return; }
+            
+            let text = `/${signal.toLowerCase()} ${price} ${rsi} ${signal === 'BUY' ? 'UP' : 'DOWN'} ${atr}`;
+            if (sl) text += ` ${sl}`;
+            if (tp) text += ` ${tp}`;
+            
+            try {
+                await fetch(API + '/telegram/webhook', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: {text: text, chat: {id: CHAT_ID}}})
+                });
+                document.getElementById('trade-result').innerHTML = `<span style="color:#00ff88;">✅ ${signal} отправлен!</span>`;
+            } catch(e) {
+                document.getElementById('trade-result').innerHTML = `<span style="color:#ff1744;">❌ Ошибка</span>`;
+            }
+        }
+        
+        async function sendChat() {
+            const input = document.getElementById('msg_input');
+            const text = input.value.trim();
+            if (!text) return;
+            
+            const chat = document.getElementById('tab-chat');
+            chat.innerHTML += `<div class="msg user">${text}</div>`;
+            input.value = '';
+            
+            try {
+                const r = await fetch(API + '/telegram/webhook', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: {text: text, chat: {id: CHAT_ID}}})
+                });
+                chat.innerHTML += `<div class="msg ai">🧠 Ответ отправлен в Telegram. Проверь бота!</div>`;
+            } catch(e) {
+                chat.innerHTML += `<div class="msg ai">❌ Ошибка соединения</div>`;
+            }
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
+        loadStats();
+        setInterval(loadStats, 60000);
+    </script>
+</body>
+</html>
