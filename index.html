@@ -25,7 +25,7 @@
         .tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; }
         .tab.active { color: #f0b90b; border-bottom: 2px solid #f0b90b; }
         .content { flex: 1; overflow-y: auto; }
-        .chart { height: 280px; }
+        .chart { height: 60vh; }
         .chart iframe { width: 100%; height: 100%; border: none; }
         .trade-form { padding: 16px; }
         .trade-form input { width: 100%; padding: 12px; margin: 6px 0; background: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 8px; font-size: 16px; }
@@ -70,7 +70,24 @@
     
     <div class="content" id="content">
         <div id="tab-chart" class="chart">
-            <iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tv_chart&symbol=XAUUSD&interval=5&theme=dark&style=1&locale=ru&width=100%&height=100%"></iframe>
+            <script src="https://s3.tradingview.com/tv.js"></script>
+            <script>
+            new TradingView.widget({
+                "width": "100%",
+                "height": "100%",
+                "symbol": "XAUUSD",
+                "interval": "5",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "1",
+                "locale": "ru",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": "tv_chart"
+            });
+            </script>
+            <div id="tv_chart" style="width:100%;height:100%;"></div>
         </div>
         <div id="tab-trade" class="trade-form" style="display:none;">
             <input type="number" id="t_price" placeholder="Цена XAUUSD" step="0.01">
@@ -98,7 +115,6 @@
     <script>
         const API = 'https://xau-ai.onrender.com';
         const CHAT_ID = '5246379098';
-        let priceHistory = [];
         
         function showTab(name) {
             document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', t.textContent.includes({'chart':'График','trade':'Сделка','chat':'AI','stats':'Статы'}[name])));
