@@ -1,0 +1,52 @@
+import requests
+from datetime import datetime, timezone
+from config import Config
+from models import Payment, PendingDeposit, User
+from extensions import db
+import logging
+
+logger = logging.getLogger(__name__)
+USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+_seen = set()
+
+def check_trc20():
+    try:
+        r = requests.get(f"https://api.trongrid.io/v1/accounts/{Config.USDT_TRC20}/transactions/trc20?limit=10&contract_address={USDT_CONTRACT}", timeout=15)
+        if r.status_code != 200:
+            return []
+        new = []
+        for tx in r.json().get("data", []):
+            tid = tx["transaction_id"]
+            if tid in _seen:
+                continue
+            _seen.add(tid)
+            to_a = tx.get("to", "").strip()
+            if to_a.lower() != Config.USDT_TRC20.lower():
+                continue
+            amt = int(tx["value"]) / 1_000_000
+            if Payment.query.filter_by(tx_id=tid).first():
+                continue
+            p = Payment(tx_id=tid, from_address=tx.get("from", ""), amount=amt, network="TRC20", status="confirmed")
+            db.session.add(p)
+            new.append(p)
+        if new:
+            db.session.commit()
+            _match()
+        return new
+    except Exception as e:
+        logger.error(f"TRC20: {e}")
+        return []
+
+def _match():
+    for pd_row in PendingDeposit.query.filter_by(status="pending").all():
+        for pay in Payment.query.filter(Payment.amount >= float(pd_row.expected_amount), Payment.created_at > pd_row.created_at).order_by(Payment.created_at).all():
+            if not PendingDeposit.query.filter_by(matched_tx_id=pay.tx_id).first():
+                u = User.query.get(pd_row.user_id)
+                if u:
+                    u.tier = "vip"
+                    u.vip_expires_at = datetime.now(timezone.utc).replace(day=datetime.now(timezone.utc).day + 30)
+                    pd_row.status = "matched"
+                    pd_row.matched_tx_id = pay.tx_id
+                    pay.user_id = u.id
+                    db.session.commit()
+                    break
