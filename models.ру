@@ -1,0 +1,78 @@
+from extensions import db
+from datetime import datetime, timezone
+
+class User(db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(128), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=True)
+    tier = db.Column(db.String(10), default="free")
+    theme = db.Column(db.String(10), default="dark")
+    is_active = db.Column(db.Boolean, default=True)
+    login_attempts = db.Column(db.Integer, default=0)
+    locked_until = db.Column(db.DateTime, nullable=True)
+    vip_expires_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    mt5_accounts = db.relationship("MT5Account", backref="user", lazy=True)
+    trades = db.relationship("Trade", backref="user", lazy=True)
+    pending_deposits = db.relationship("PendingDeposit", backref="user", lazy=True)
+
+class MT5Account(db.Model):
+    __tablename__ = "mt5_accounts"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    login = db.Column(db.BigInteger, nullable=False)
+    password_encrypted = db.Column(db.String(500), nullable=False)
+    server = db.Column(db.String(100), nullable=False)
+    account_name = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (db.UniqueConstraint("user_id", "login"),)
+
+class Trade(db.Model):
+    __tablename__ = "trades"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    mt5_account_id = db.Column(db.Integer, db.ForeignKey("mt5_accounts.id"), nullable=True)
+    signal = db.Column(db.String(5), nullable=False)
+    entry_price = db.Column(db.Numeric(12, 2), nullable=False)
+    exit_price = db.Column(db.Numeric(12, 2), nullable=True)
+    sl = db.Column(db.Numeric(12, 2), nullable=False)
+    tp = db.Column(db.Numeric(12, 2), nullable=False)
+    lot_size = db.Column(db.Numeric(8, 4), default=0.01)
+    ticket = db.Column(db.BigInteger, nullable=True)
+    pnl = db.Column(db.Numeric(12, 2), default=0)
+    status = db.Column(db.String(20), default="open")
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+class Payment(db.Model):
+    __tablename__ = "payments"
+    id = db.Column(db.Integer, primary_key=True)
+    tx_id = db.Column(db.String(150), unique=True, nullable=False)
+    from_address = db.Column(db.String(150), nullable=True)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    network = db.Column(db.String(20), default="TRC20")
+    status = db.Column(db.String(20), default="pending")
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+class PendingDeposit(db.Model):
+    __tablename__ = "pending_deposits"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    expected_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), default="pending")
+    matched_tx_id = db.Column(db.String(150), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+class DailyStats(db.Model):
+    __tablename__ = "daily_stats"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    date = db.Column(db.Date, default=lambda: datetime.now(timezone.utc).date())
+    trades_count = db.Column(db.Integer, default=0)
+    wins = db.Column(db.Integer, default=0)
+    losses = db.Column(db.Integer, default=0)
+    pnl = db.Column(db.Numeric(12, 2), default=0)
+    __table_args__ = (db.UniqueConstraint("user_id", "date"),)
