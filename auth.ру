@@ -1,0 +1,35 @@
+import hashlib
+from datetime import datetime, timedelta, timezone
+from models import User
+from extensions import db
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def register_user(username: str, password: str, email: str = None) -> dict:
+    if User.query.filter_by(username=username).first():
+        return {"error": "Пользователь уже существует"}
+    if email and User.query.filter_by(email=email).first():
+        return {"error": "Email уже используется"}
+    user = User(username=username, password_hash=hash_password(password), email=email, tier="free")
+    db.session.add(user)
+    db.session.commit()
+    return {"user_id": user.id, "username": user.username, "tier": user.tier}
+
+def login_user(username: str, password: str) -> dict:
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        return {"error": "Неверный логин или пароль"}
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        m = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
+        return {"error": f"Заблокирован на {m} мин"}
+    if user.password_hash != hash_password(password):
+        user.login_attempts += 1
+        if user.login_attempts >= 5:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+        db.session.commit()
+        return {"error": "Неверный логин или пароль"}
+    user.login_attempts = 0
+    user.locked_until = None
+    db.session.commit()
+    return {"user_id": user.id, "username": user.username, "tier": user.tier, "theme": user.theme}
