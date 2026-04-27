@@ -1,0 +1,42 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime, timezone
+from models import User, MT5Account, Trade, DailyStats
+from extensions import db
+from mt5_client import mt5_manager
+import logging
+
+logger = logging.getLogger(__name__)
+
+def check_signal(rates):
+    if rates is None or len(rates) < 60:
+        return None
+    df = pd.DataFrame(rates)
+    df["time"] = pd.to_datetime(df["time"], unit="s")
+    df["ema20"] = df["close"].ewm(span=20, adjust=False).mean()
+    df["atr"] = (df["high"] - df["low"]).rolling(14).mean()
+    delta = df["close"].diff()
+    gain = delta.where(delta > 0, 0.0).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
+    df["rsi"] = 100.0 - (100.0 / (1.0 + gain / loss))
+    df["trend"] = df["close"].rolling(60).mean().diff().apply(lambda x: "UP" if x > 0 else "DOWN")
+
+    row = df.iloc[-1]
+    price, atr, rsi, trend, ema20 = float(row["close"]), float(row["atr"]), float(row["rsi"]), row["trend"], float(row["ema20"])
+    dist = abs(price - ema20)
+    atr_ok = 10 <= atr <= 25
+    ema_ok = dist < 6.5
+    time_ok = datetime.now(timezone.utc).minute >= 30
+    rules = sum([atr_ok, ema_ok, time_ok, trend in ("UP", "DOWN")])
+
+    signal = None
+    if trend == "UP" and ema_ok and (rsi > 48 or rules >= 5):
+        signal = "BUY"
+    elif trend == "DOWN" and ema_ok and (rsi < 52 or rules >= 5):
+        signal = "SELL"
+
+    if signal:
+        sl = price - atr * 1.5 if signal == "BUY" else price + atr * 1.5
+        tp = price + atr * 2.0 if signal == "BUY" else price - atr * 2.0
+        return {"signal": signal, "price": round(price, 2), "sl": round(sl, 2), "tp": round(tp, 2), "atr": round(atr, 2), "rsi": round(rsi, 1)}
+    return None
