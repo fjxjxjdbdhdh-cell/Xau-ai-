@@ -1,0 +1,41 @@
+version: "3.8"
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: xau_user
+      POSTGRES_PASSWORD: xau_pass
+      POSTGRES_DB: xau_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+  app:
+    build: .
+    restart: always
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://xau_user:xau_pass@db:5432/xau_bot
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - USDT_TRC20=${USDT_TRC20}
+    ports:
+      - "5050:5050"
+      - "8000:8000"
+volumes:
+  postgres_data:
+  redis_data:
