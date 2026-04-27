@@ -1,0 +1,36 @@
+from flask import Flask
+from config import Config
+from extensions import db, jwt, cors
+from api_auth import bp as auth_bp
+from api_trading import bp as trading_bp
+from api_payments import bp as payments_bp
+from api_dashboard import bp as dashboard_bp
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+def create_app():
+    app = Flask(__name__, static_folder="static", static_url_path="/")
+    app.config.from_object(Config)
+    db.init_app(app)
+    jwt.init_app(app)
+    cors.init_app(app)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(trading_bp)
+    app.register_blueprint(payments_bp)
+    app.register_blueprint(dashboard_bp)
+
+    @app.route("/api/health")
+    def health():
+        return {"status": "ok"}
+
+    @app.route("/")
+    def index():
+        return app.send_static_file("index.html")
+
+    with app.app_context():
+        db.create_all()
+    return app
+
+if __name__ == "__main__":
+    create_app().run(host="0.0.0.0", port=5050, debug=False)
