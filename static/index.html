@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>XAUUSD AI</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0b0e11;color:#eaecef;font-family:-apple-system,sans-serif}
+.header{background:#1e2329;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #2b3139}
+.header h1{font-size:18px;color:#f0b90b}.container{max-width:800px;margin:0 auto;padding:16px}
+.card{background:#1e2329;border-radius:8px;padding:16px;margin-bottom:12px;border:1px solid #2b3139}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.stat{background:#181a20;padding:12px;border-radius:6px;text-align:center}
+.stat .value{font-size:20px;font-weight:bold;color:#f0b90b}.stat .label{font-size:11px;color:#848e9c;margin-top:4px}
+.btn{padding:10px 20px;border:none;border-radius:4px;font-weight:bold;cursor:pointer;color:#fff}.btn-green{background:#0ecb81}.btn-red{background:#f6465d}
+.flex{display:flex;gap:8px}input{background:#181a20;border:1px solid #2b3139;color:#eaecef;padding:10px;border-radius:4px;width:100%}
+#price{font-size:32px;font-weight:bold;color:#f0b90b;text-align:center}</style></head><body>
+<div class="header"><h1>XAUUSD AI</h1><div id="userInfo">Вход</div></div>
+<div class="container"><div id="price">...</div>
+<div class="stats"><div class="stat"><div class="value" id="balance">-</div><div class="label">Баланс</div></div>
+<div class="stat"><div class="value" id="pnl">$0</div><div class="label">P&L</div></div></div>
+<div class="flex"><button class="btn btn-green" onclick="t('BUY')">BUY</button><button class="btn btn-red" onclick="t('SELL')">SELL</button></div></div>
+<script>
+let token=localStorage.getItem('token');
+async function api(u,o={}){if(token)o.headers={...o.headers,Authorization:'Bearer '+token};let r=await fetch('/api'+u,o);return r.json()}
+setInterval(async()=>{let d=await api('/dashboard/stats');if(d.tier){document.getElementById('balance').textContent='$'+d.pnl_today;document.getElementById('pnl').textContent=(d.pnl_today>=0?'+':'')+'$'+d.pnl_today;document.getElementById('userInfo').textContent=d.tier.toUpperCase()}},2000)
+async function t(s){let d=await api('/trading/manual-trade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signal:s})});alert(d.error||'OK')}
+</script></body></html>
