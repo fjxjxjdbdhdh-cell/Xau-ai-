@@ -1,0 +1,24 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwt-secret")
+    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "postgresql://xau_user:xau_pass@localhost:5432/xau_bot")
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    USDT_TRC20 = os.getenv("USDT_TRC20", "")
+    BYBIT_UID = os.getenv("BYBIT_UID", "")
+    VIP_PRICE_USDT = float(os.getenv("VIP_PRICE_USDT", "20"))
+    ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+    ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+    MAX_TRADES_PER_DAY = int(os.getenv("MAX_TRADES_PER_DAY", "5"))
+    DAILY_PROFIT_TARGET = float(os.getenv("DAILY_PROFIT_TARGET", "20.0"))
+    DAILY_LOSS_LIMIT = float(os.getenv("DAILY_LOSS_LIMIT", "-16.0"))
+    LOT_SIZE = float(os.getenv("LOT_SIZE", "0.01"))
+    SYMBOL = os.getenv("SYMBOL", "XAUUSD")
+    MAGIC_NUMBER = 999
