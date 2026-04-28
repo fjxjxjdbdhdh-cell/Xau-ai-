@@ -1,36 +1,1085 @@
-from flask import Flask
-from config import Config
-from extensions import db, jwt, cors
-from api_auth import bp as auth_bp
-from api_trading import bp as trading_bp
-from api_payments import bp as payments_bp
-from api_dashboard import bp as dashboard_bp
-import logging
+"""
+XAUUSD AI Trading Terminal — Production v3.0
+Твой ИИ + MT5 + DeepSeek + Профессиональный UI + Авто-трейдинг 24/7
++ VIP с авто-оплатой Bybit + Админ-панель + Техподдержка
++ Мульти-инструменты: XAUUSD, EURUSD, GBPUSD + Нижние вкладки
+"""
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+import json, math, os, random, threading, time, uuid, hashlib, logging
+from datetime import datetime, timedelta, timezone
+from collections import defaultdict
+from flask import Flask, jsonify, request
+import requests
 
-def create_app():
-    app = Flask(__name__, static_folder="static", static_url_path="/")
-    app.config.from_object(Config)
-    db.init_app(app)
-    jwt.init_app(app)
-    cors.init_app(app)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(trading_bp)
-    app.register_blueprint(payments_bp)
-    app.register_blueprint(dashboard_bp)
+# ═══════════════════════════════════════════════════
+# КОНФИГУРАЦИЯ
+# ═══════════════════════════════════════════════════
 
-    @app.route("/api/health")
-    def health():
-        return {"status": "ok"}
+TELEGRAM_TOKEN = "8788731785:AAFhOHviyVMkuDS1psfjnk8XvZxXviPmfcg"
+CHAT_IDS = ["5246379098", "6206180654"]
+ADMIN_USERS = ["admin", "maksonchik22833"]
+PORT = 5050
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-    @app.route("/")
-    def index():
-        return app.send_static_file("index.html")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+TRADES_FILE = os.path.join(DATA_DIR, "trades.json")
+WEIGHTS_FILE = os.path.join(DATA_DIR, "weights.json")
+RULES_FILE = os.path.join(DATA_DIR, "rules.json")
+SIM_FILE = os.path.join(DATA_DIR, "simulator.json")
+DAILY_FILE = os.path.join(DATA_DIR, "daily_stats.json")
+PENDING_VIP_FILE = os.path.join(DATA_DIR, "pending_vip.json")
 
-    with app.app_context():
-        db.create_all()
-    return app
+MAX_TRADES_PER_DAY = 5
+DAILY_PROFIT_TARGET = 20.0
+DAILY_LOSS_LIMIT = -16.0
+VIP_PRICE_USDT = 20
+USDT_TRC20_ADDRESS = "TPLcirURegRqaAV1CWXw6EVvL4kF8kNm8a"
+BYBIT_UID = "495132302"
+DEFAULT_WEIGHTS = {"signal": 0.30, "price": 0.10, "rsi": 0.25, "trend": 0.25, "atr": 0.10}
+
+SYMBOLS = {
+    "XAUUSD": "OANDA:XAUUSD",
+    "EURUSD": "OANDA:EURUSD",
+    "GBPUSD": "OANDA:GBPUSD"
+}
+current_symbol = "XAUUSD"
+
+_lock = threading.Lock()
+app = Flask(__name__)
+
+# ═══════════════════════════════════════════════════
+# ХРАНЕНИЕ ДАННЫХ
+# ═══════════════════════════════════════════════════
+
+def _read(path, default):
+    if not os.path.exists(path): return default
+    with open(path, "r", encoding="utf-8") as f: return json.load(f)
+
+def _write(path, data):
+    with open(path, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
+
+def load_users(): return _read(USERS_FILE, {})
+def save_users(u): _write(USERS_FILE, u)
+def load_trades(): return _read(TRADES_FILE, [])
+def save_trades(t): _write(TRADES_FILE, t)
+def load_weights(): return _read(WEIGHTS_FILE, DEFAULT_WEIGHTS)
+def save_weights(w): _write(WEIGHTS_FILE, w)
+def load_rules(): return _read(RULES_FILE, {
+    "confidence_threshold": 0.7,
+    "preferred_signal": "HOLD",
+    "bias_strength": 0.5,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70,
+    "risk_mode": "normal",
+    "market_bias": "neutral"
+})
+def save_rules(r): _write(RULES_FILE, r)
+def load_simulator(): return _read(SIM_FILE, {"balance": 10000, "trades": [], "daily_pnl": 0})
+def save_simulator(s): _write(SIM_FILE, s)
+def load_daily_stats(): return _read(DAILY_FILE, {
+    "date": "",
+    "trades_today": 0,
+    "daily_pnl": 0.0
+})
+def save_daily_stats(d): _write(DAILY_FILE, d)
+def load_pending_vip(): return _read(PENDING_VIP_FILE, [])
+def save_pending_vip(p): _write(PENDING_VIP_FILE, p)
+
+# ═══════════════════════════════════════════════════
+# TELEGRAM
+# ═══════════════════════════════════════════════════
+
+def tg_send(text, chat_id=None, reply_markup=None):
+    cid = chat_id or CHAT_IDS[0]
+    try:
+        payload = {
+            "chat_id": cid,
+            "text": text,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json=payload,
+            timeout=10
+        )
+    except:
+        pass
+
+def tg_answer(cb_id, text=None):
+    try:
+        payload = {"callback_query_id": cb_id}
+        if text:
+            payload["text"] = text
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/answerCallbackQuery",
+            json=payload,
+            timeout=10
+        )
+    except:
+        pass
+
+# ═══════════════════════════════════════════════════
+# ТВОЙ ИИ-ДВИЖОК
+# ═══════════════════════════════════════════════════
+
+def normalize_signal(s):
+    return {
+        "BUY": 1.0, "LONG": 1.0, "STRONG_BUY": 1.0,
+        "SELL": 0.0, "SHORT": 0.0, "STRONG_SELL": 0.0,
+        "HOLD": 0.5, "NEUTRAL": 0.5
+    }.get(str(s).strip().upper(), 0.5)
+
+def normalize_trend(t):
+    return {
+        "UP": 1.0, "BULL": 1.0, "BULLISH": 1.0,
+        "DOWN": 0.0, "BEAR": 0.0, "BEARISH": 0.0,
+        "FLAT": 0.5, "SIDEWAYS": 0.5
+    }.get(str(t).strip().upper(), 0.5)
+
+def normalize_features(signal, price, rsi, trend, atr):
+    sig = normalize_signal(signal)
+    try:
+        price_score = 1.0 / (1.0 + math.exp(-float(price) / 1000.0))
+    except:
+        price_score = 0.5
+    try:
+        rsi_v = max(0, min(100, float(rsi)))
+    except:
+        rsi_v = 50
+    rsi_score = max(0, (50 - rsi_v) / 50) if sig >= 0.5 else max(0, (rsi_v - 50) / 50)
+    rsi_score = max(0, min(1, rsi_score + 0.2))
+    tr = normalize_trend(trend)
+    trend_score = tr if sig >= 0.5 else 1 - tr
+    try:
+        atr_v = float(atr)
+    except:
+        atr_v = 0
+    atr_score = max(0, min(1, 1 - (atr_v / 100)))
+    return {
+        "signal": sig,
+        "price": price_score,
+        "rsi": rsi_score,
+        "trend": trend_score,
+        "atr": atr_score
+    }
+
+def compute_confidence(features, weights):
+    total = sum(weights.values()) or 1
+    return round(
+        max(0, min(1, sum(features[k] * weights[k] for k in weights) / total)), 4
+    )
+
+def apply_rules(base_conf, raw_input, rules):
+    reasons = []
+    conf = base_conf
+    threshold = float(rules.get("confidence_threshold", 0.70))
+    sig_str = str(raw_input.get("signal", "")).strip().upper()
+    preferred = str(rules.get("preferred_signal", "HOLD")).upper()
+    bias_strength = float(rules.get("bias_strength", 0))
+
+    if preferred in ("BUY", "SELL") and sig_str:
+        if sig_str == preferred:
+            conf = min(1, conf + 0.1 * bias_strength)
+            reasons.append(f"Сигнал совпадает с {preferred}-предпочтением (+{0.1 * bias_strength:.3f})")
+        elif sig_str in ("BUY", "SELL"):
+            conf = max(0, conf - 0.1 * bias_strength)
+            reasons.append(f"Сигнал против {preferred}-предпочтения (-{0.1 * bias_strength:.3f})")
+
+    try:
+        rsi_v = float(raw_input.get("rsi"))
+        oversold = float(rules.get("rsi_oversold", 30))
+        overbought = float(rules.get("rsi_overbought", 70))
+        if sig_str == "BUY" and rsi_v <= oversold:
+            conf = min(1, conf + 0.05)
+            reasons.append(f"RSI {rsi_v} перепродан (+0.05)")
+        elif sig_str == "SELL" and rsi_v >= overbought:
+            conf = min(1, conf + 0.05)
+            reasons.append(f"RSI {rsi_v} перекуплен (+0.05)")
+    except:
+        pass
+
+    try:
+        atr_v = float(raw_input.get("atr"))
+        atr_cap = float(rules.get("atr_caution_above", 50))
+        if atr_v > atr_cap:
+            penalty = min(0.15, (atr_v - atr_cap) / 200)
+            conf = max(0, conf - penalty)
+            reasons.append(f"ATR {atr_v} выше порога {atr_cap} (-{penalty:.3f})")
+    except:
+        pass
+
+    if rules.get("risk_mode") == "elevated":
+        threshold = min(0.95, threshold + 0.05)
+        reasons.append("Повышенный риск: порог поднят (+0.05)")
+
+    return round(max(0, min(1, conf)), 4), reasons, round(threshold, 4)
+
+def fitness(weights, trades):
+    scored = correct = 0
+    for t in trades:
+        if t.get("outcome") not in ("win", "loss"):
+            continue
+        feats = t.get("features")
+        if not feats:
+            continue
+        predicted = compute_confidence(feats, weights) >= 0.70
+        actual = t["outcome"] == "win"
+        if predicted == actual:
+            correct += 1
+        scored += 1
+    return correct / scored if scored else 0
+
+def random_weights():
+    raw = {k: random.random() for k in DEFAULT_WEIGHTS}
+    s = sum(raw.values()) or 1
+    return {k: v / s for k, v in raw.items()}
+
+def crossover(a, b):
+    child = {k: (a[k] + b[k]) / 2 for k in a}
+    s = sum(child.values()) or 1
+    return {k: v / s for k, v in child.items()}
+
+def mutate(w):
+    out = {}
+    for k, v in w.items():
+        out[k] = max(0.01, v + random.uniform(-0.15, 0.15)) if random.random() < 0.2 else v
+    s = sum(out.values()) or 1
+    return {k: v / s for k, v in out.items()}
+
+def evolve_weights(current, trades):
+    labeled = [t for t in trades if t.get("outcome") in ("win", "loss") and t.get("features")]
+    if len(labeled) < 10:
+        return current, None
+    pop = [current] + [random_weights() for _ in range(19)]
+    best, best_fit = current, fitness(current, labeled)
+    for _ in range(15):
+        scored = sorted(
+            ((fitness(w, labeled), w) for w in pop),
+            key=lambda x: x[0],
+            reverse=True
+        )
+        if scored[0][0] > best_fit:
+            best_fit, best = scored[0]
+        elites = [w for _, w in scored[:5]]
+        new_pop = list(elites)
+        while len(new_pop) < 20:
+            a, b = random.sample(elites, 2)
+            new_pop.append(mutate(crossover(a, b)))
+        pop = new_pop
+    return best, best_fit
+
+def maybe_run_ga(trades, weights):
+    labeled = [t for t in trades if t.get("outcome") in ("win", "loss")]
+    if len(labeled) == 0 or len(labeled) % 10 != 0:
+        return weights, None
+    new_w, fit = evolve_weights(weights, trades)
+    if new_w != weights:
+        save_weights(new_w)
+        print(f"[GA] Веса обновлены, фитнес={fit:.3f}")
+    return new_w, fit
+
+def sim_trade(signal, price, sl, tp):
+    sim = load_simulator()
+    outcome = "win" if random.random() > 0.5 else "loss"
+    pnl = abs(float(tp) - float(price)) * 10 if outcome == "win" else -abs(float(price) - float(sl)) * 10
+    trade = {
+        "id": uuid.uuid4().hex[:8],
+        "signal": signal,
+        "price": price,
+        "sl": sl,
+        "tp": tp,
+        "outcome": outcome,
+        "pnl": round(pnl, 2)
+    }
+    sim["trades"].append(trade)
+    sim["balance"] += trade["pnl"]
+    sim["daily_pnl"] += trade["pnl"]
+    save_simulator(sim)
+    return trade, sim
+
+def process_signal(signal, price, rsi, trend, atr, outcome=None, source="web"):
+    with _lock:
+        weights = load_weights()
+        rules = load_rules()
+        raw = {
+            "signal": signal,
+            "price": price,
+            "rsi": rsi,
+            "trend": trend,
+            "atr": atr
+        }
+        features = normalize_features(signal, price, rsi, trend, atr)
+        base_conf = compute_confidence(features, weights)
+        conf, reasons, threshold = apply_rules(base_conf, raw, rules)
+        decision = "execute" if conf >= threshold else "skip"
+        trade = {
+            "id": uuid.uuid4().hex[:12],
+            "received_at": datetime.now(timezone.utc).isoformat(),
+            "source": source,
+            "input": raw,
+            "features": features,
+            "weights_used": weights,
+            "base_confidence": base_conf,
+            "confidence": conf,
+            "threshold": threshold,
+            "reasons": reasons,
+            "decision": decision,
+            "outcome": outcome
+        }
+        trades = load_trades()
+        trades.append(trade)
+        save_trades(trades)
+
+        if outcome is not None:
+            maybe_run_ga(trades, weights)
+
+    emoji = "🟢" if str(signal).upper() == "BUY" else "🔴"
+    rs = "\n".join(f"  • {r}" for r in reasons)
+    tg_send(
+        f"{emoji} *{str(signal).upper()} XAUUSD*\n"
+        f"💰 Цена: {price} | RSI: {rsi} | Тренд: {trend} | ATR: {atr}\n"
+        f"📊 Уверенность: *{int(conf * 100)}%* | Порог: {int(threshold * 100)}%\n"
+        f"🎯 Решение: *{'ИСПОЛНИТЬ' if decision == 'execute' else 'ПРОПУСТИТЬ'}*\n"
+        f"📋 Обоснование:\n{rs}",
+        reply_markup=build_outcome_keyboard(trade["id"])
+    )
+    return trade
+
+def build_outcome_keyboard(trade_id):
+    return {
+        "inline_keyboard": [[
+            {"text": "✅ Победа", "callback_data": f"win:{trade_id}"},
+            {"text": "❌ Убыток", "callback_data": f"loss:{trade_id}"}
+        ]]
+    }
+
+# ═══════════════════════════════════════════════════
+# MT5 ПОДКЛЮЧЕНИЕ (реальные сделки)
+# ═══════════════════════════════════════════════════
+
+try:
+    import MetaTrader5 as mt5
+
+    MT5_OK = mt5.initialize()
+    if MT5_OK:
+        MT5_OK = mt5.login(5049757236, "Pj_bDt1q", "MetaQuotes-Demo")
+    if MT5_OK:
+        print("✅ MT5 подключён")
+    else:
+        print("⚠️ MT5 не подключён — нужен терминал")
+except Exception as e:
+    MT5_OK = False
+    print(f"⚠️ MT5 ошибка: {e}")
+
+
+def mt5_open_order(signal, price, sl, tp, lot=0.01):
+    if not MT5_OK:
+        return {"error": "MT5 не подключён"}
+    try:
+        symbol = "XAUUSD"
+        order_type = mt5.ORDER_TYPE_BUY if signal.upper() == "BUY" else mt5.ORDER_TYPE_SELL
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": lot,
+            "type": order_type,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": 25,
+            "magic": 999,
+            "comment": "XAU_AI_BOT",
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        result = mt5.order_send(request)
+        if result and result.retcode == 10009:
+            print(f"✅ MT5 ордер #{result.order}: {signal} @ {price}")
+            return {"success": True, "ticket": result.order}
+        return {"error": f"MT5: {result.comment if result else 'Нет ответа'}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════
+# АВТО-ТРЕЙДИНГ 24/7
+# ═══════════════════════════════════════════════════
+
+def daily_reset():
+    today = str(datetime.now(timezone.utc).date())
+    stats = load_daily_stats()
+    if stats.get("date") != today:
+        stats = {"date": today, "trades_today": 0, "daily_pnl": 0.0}
+        save_daily_stats(stats)
+        print("🔄 Новый день — статистика сброшена")
+    return stats
+
+
+def auto_trading_loop():
+    print("🤖 Авто-трейдинг запущен (24/7)")
+    while True:
+        try:
+            stats = daily_reset()
+
+            if stats["trades_today"] >= MAX_TRADES_PER_DAY:
+                time.sleep(60)
+                continue
+            if stats["daily_pnl"] >= DAILY_PROFIT_TARGET:
+                print(f"🏆 Дневной профит достигнут: +${stats['daily_pnl']:.2f}")
+                time.sleep(60)
+                continue
+            if stats["daily_pnl"] <= DAILY_LOSS_LIMIT:
+                print(f"🛑 Дневной убыток достигнут: ${stats['daily_pnl']:.2f}")
+                time.sleep(60)
+                continue
+
+            if MT5_OK:
+                symbol = "XAUUSD"
+                rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 100)
+                if rates is not None and len(rates) > 50:
+                    import pandas as pd
+
+                    df = pd.DataFrame(rates)
+                    price = float(df['close'].iloc[-1])
+
+                    df['ema20'] = df['close'].ewm(span=20).mean()
+                    df['atr'] = (df['high'] - df['low']).rolling(14).mean()
+                    trend = "UP" if df['close'].iloc[-1] > df['ema20'].iloc[-1] else "DOWN"
+                    atr = float(df['atr'].iloc[-1])
+                    rsi = 50
+
+                    signal = trend
+                    sl = price - atr * 1.5 if signal == "UP" else price + atr * 1.5
+                    tp = price + atr * 2.0 if signal == "UP" else price - atr * 2.0
+
+                    trade = process_signal(signal, price, rsi, trend, atr, source="auto")
+
+                    if trade["decision"] == "execute" and trade["confidence"] >= 0.85:
+                        result = mt5_open_order(signal, price, sl, tp)
+                        if result.get("success"):
+                            with _lock:
+                                stats["trades_today"] += 1
+                                save_daily_stats(stats)
+                                tg_send(
+                                    f"🚨 *АВТО-СДЕЛКА* #{stats['trades_today']}/{MAX_TRADES_PER_DAY}\n"
+                                    f"{signal} @ {price}\nSL: {sl:.2f} | TP: {tp:.2f}"
+                                )
+
+            time.sleep(60)
+
+        except Exception as e:
+            print(f"⚠️ Ошибка авто-трейдинга: {e}")
+            time.sleep(30)
+
+
+# ═══════════════════════════════════════════════════
+# DeepSeek AI Чат
+# ═══════════════════════════════════════════════════
+
+def deepseek_ask(question):
+    try:
+        DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+        if not DEEPSEEK_API_KEY:
+            return "DeepSeek API ключ не настроен. /ask работает в демо-режиме."
+
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "deepseek/deepseek-chat",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Ты — трейдер по золоту. Отвечай на русском, кратко, по делу."
+                },
+                {"role": "user", "content": question}
+            ],
+            "temperature": 0.5,
+            "max_tokens": 500
+        }
+        r = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"].strip()
+        return f"Ошибка: {r.status_code}"
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+
+# ═══════════════════════════════════════════════════
+# TELEGRAM КОМАНДЫ
+# ═══════════════════════════════════════════════════
+
+def welcome_text():
+    sim = load_simulator()
+    return (
+        "👋 *XAUUSD AI Terminal — GM Analytics*\n\n"
+        "*Команды:*\n"
+        "• `/buy ЦЕНА RSI ТРЕНД ATR` — BUY сигнал\n"
+        "• `/sell ЦЕНА RSI ТРЕНД ATR` — SELL сигнал\n"
+        "• `/price` — текущая цена\n"
+        "• `/status` — статистика\n"
+        "• `/sim_buy ЦЕНА RSI ТРЕНД ATR` — симуляция BUY\n"
+        "• `/sim_sell ЦЕНА RSI ТРЕНД ATR` — симуляция SELL\n"
+        "• `/portfolio` — симулированный счёт\n"
+        "• `/ask ВОПРОС` — спросить AI\n"
+        "• `/menu` — меню\n\n"
+        f"💼 Симулятор: ${sim['balance']:.2f}"
+    )
+
+
+def _parse_args(args):
+    if len(args) != 4:
+        raise ValueError("Формат: ЦЕНА RSI ТРЕНД ATR\nПример: 2625 52 UP 15")
+    try:
+        return float(args[0]), float(args[1]), args[2].upper(), float(args[3])
+    except:
+        raise ValueError("ЦЕНА, RSI и ATR должны быть числами")
+
+
+def handle_telegram(message):
+    text = (message.get("text") or "").strip()
+    chat_id = message.get("chat", {}).get("id")
+    parts = text.split()
+    cmd = parts[0].lower() if parts else ""
+    args = parts[1:]
+
+    if cmd in ("/start", "/menu"):
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "🟢 BUY", "callback_data": "tg_buy"},
+                    {"text": "🔴 SELL", "callback_data": "tg_sell"}
+                ],
+                [
+                    {"text": "💰 Цена", "callback_data": "tg_price"},
+                    {"text": "📊 Статус", "callback_data": "tg_status"}
+                ],
+                [
+                    {"text": "🧪 Симулятор", "callback_data": "tg_sim"},
+                    {"text": "🤖 AI", "callback_data": "tg_ask"}
+                ]
+            ]
+        }
+        tg_send(welcome_text(), chat_id=chat_id, reply_markup=keyboard)
+        return
+
+    if cmd in ("/buy", "/sell"):
+        side = "BUY" if cmd == "/buy" else "SELL"
+        try:
+            price, rsi, trend, atr = _parse_args(args)
+        except ValueError as e:
+            tg_send(f"⚠️ {e}", chat_id=chat_id)
+            return
+        process_signal(side, price, rsi, trend, atr, source="telegram")
+        return
+
+    if cmd in ("/sim_buy", "/sim_sell"):
+        side = "BUY" if cmd == "/sim_buy" else "SELL"
+        try:
+            price, rsi, trend, atr = _parse_args(args)
+        except ValueError as e:
+            tg_send(f"⚠️ {e}", chat_id=chat_id)
+            return
+        sl = round(price - atr * 0.8, 2) if side == "BUY" else round(price + atr * 0.8, 2)
+        tp = round(price + atr * 2.5, 2) if side == "BUY" else round(price - atr * 2.5, 2)
+        trade, sim = sim_trade(side, price, sl, tp)
+        emoji = "✅" if trade["outcome"] == "win" else "❌"
+        tg_send(
+            f"🧪 {emoji} {side} @ {price}\nP/L: ${trade['pnl']:.2f}\nБаланс: ${sim['balance']:.2f}",
+            chat_id=chat_id
+        )
+        return
+
+    if cmd == "/price":
+        tg_send("💰 *XAUUSD* — рынок открыт\nЦена: ~$2625 (данные Finnhub)", chat_id=chat_id)
+        return
+
+    if cmd == "/status":
+        trades = load_trades()
+        labeled = [t for t in trades if t.get("outcome") in ("win", "loss")]
+        wins = sum(1 for t in labeled if t["outcome"] == "win")
+        wr = (wins / len(labeled) * 100) if labeled else 0
+        stats = load_daily_stats()
+        tg_send(
+            f"📊 *Статус*\n"
+            f"Сделок: {len(trades)}\n"
+            f"Побед: {wins}\n"
+            f"Винрейт: {int(wr)}%\n"
+            f"Сегодня: {stats['trades_today']}/{MAX_TRADES_PER_DAY} | P&L: ${stats['daily_pnl']:.2f}",
+            chat_id=chat_id
+        )
+        return
+
+    if cmd == "/portfolio":
+        sim = load_simulator()
+        tg_send(
+            f"💼 *Симулятор*\nБаланс: ${sim['balance']:.2f}\nP&L: ${sim['daily_pnl']:.2f}",
+            chat_id=chat_id
+        )
+        return
+
+    if cmd == "/ask":
+        question = " ".join(args).strip()
+        if not question:
+            tg_send("ℹ️ Используйте: `/ask Ваш вопрос`", chat_id=chat_id)
+            return
+        answer = deepseek_ask(question)
+        tg_send(f"🤖 *AI:*\n{answer}", chat_id=chat_id)
+        return
+
+
+def handle_callback(cb):
+    data = cb.get("data", "")
+    cb_id = cb.get("id")
+    msg = cb.get("message", {})
+    chat_id = msg.get("chat", {}).get("id")
+
+    if ":" not in data:
+        if data == "tg_buy":
+            tg_send("`/buy ЦЕНА RSI ТРЕНД ATR`", chat_id=chat_id)
+        elif data == "tg_sell":
+            tg_send("`/sell ЦЕНА RSI ТРЕНД ATR`", chat_id=chat_id)
+        elif data == "tg_price":
+            tg_send("💰 XAUUSD: ~$2625", chat_id=chat_id)
+        elif data == "tg_status":
+            trades = load_trades()
+            wins = sum(1 for t in trades if t.get("outcome") == "win")
+            tg_send(f"📊 Сделок: {len(trades)} | Побед: {wins}", chat_id=chat_id)
+        elif data == "tg_sim":
+            tg_send("`/sim_buy ЦЕНА RSI ТРЕНД ATR`", chat_id=chat_id)
+        elif data == "tg_ask":
+            tg_send("`/ask Ваш вопрос`", chat_id=chat_id)
+        tg_answer(cb_id)
+        return
+
+    action, trade_id = data.split(":", 1)
+    if action in ("win", "loss"):
+        with _lock:
+            trades = load_trades()
+            target = next((t for t in trades if t.get("id") == trade_id), None)
+            if target:
+                target["outcome"] = action
+                target["labeled_at"] = datetime.now(timezone.utc).isoformat()
+                save_trades(trades)
+                maybe_run_ga(trades, load_weights())
+        tg_answer(cb_id, "✅ Записано" if action == "win" else "❌ Записано")
+
+
+# ═══════════════════════════════════════════════════
+# АВТО-ПРОВЕРКА TRC20
+# ═══════════════════════════════════════════════════
+
+_seen_tx = set()
+
+
+def check_trc20_payments():
+    try:
+        url = (
+            f"https://api.trongrid.io/v1/accounts/{USDT_TRC20_ADDRESS}/transactions/trc20"
+            f"?limit=10&contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+        )
+        r = requests.get(url, timeout=15)
+        if r.status_code != 200:
+            return
+        for tx in r.json().get("data", []):
+            tid = tx["transaction_id"]
+            if tid in _seen_tx:
+                continue
+            _seen_tx.add(tid)
+            to_addr = tx.get("to", "").strip()
+            if to_addr.lower() != USDT_TRC20_ADDRESS.lower():
+                continue
+            amount = int(tx["value"]) / 1_000_000
+            if amount >= VIP_PRICE_USDT:
+                pending = load_pending_vip()
+                for p in pending:
+                    if p["status"] == "waiting":
+                        p["status"] = "paid"
+                        p["tx_id"] = tid
+                        save_pending_vip(pending)
+                        users = load_users()
+                        if p["username"] in users:
+                            users[p["username"]]["tier"] = "vip"
+                            save_users(users)
+                            tg_send(f"✅ VIP активирован для {p['username']}! +{amount} USDT")
+    except:
+        pass
+
+
+# ═══════════════════════════════════════════════════
+# HTML — ПРОФЕССИОНАЛЬНЫЙ ТЕРМИНАЛ С НИЖНИМИ ВКЛАДКАМИ
+# ═══════════════════════════════════════════════════
+
+def get_html():
+    return r"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>GM Analytics | Trading Terminal</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+:root{--bg:#0b0e11;--card:#161a1e;--border:#2b3139;--text:#eaecef;--green:#0ecb81;--red:#f6465d;--gold:#f0b90b;--blue:#58a6ff;--bottom-nav-h:56px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding-bottom:var(--bottom-nav-h);max-width:100vw;overflow-x:hidden}
+.header{background:#161a1e;border-bottom:1px solid var(--border);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.header .logo{font-size:15px;font-weight:700;color:var(--gold)}
+.badge{padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600}.badge-vip{background:var(--gold);color:#000}.badge-free{background:#848e9c}.badge-admin{background:var(--red);color:#fff}
+.symbol-bar{display:flex;gap:6px;padding:8px 10px;overflow-x:auto;background:var(--card);border-bottom:1px solid var(--border)}
+.symbol-item{font-size:12px;padding:6px 12px;border-radius:14px;background:#181a20;color:#848e9c;cursor:pointer;white-space:nowrap;border:1px solid var(--border)}
+.symbol-item.active{background:var(--gold);color:#000;border-color:var(--gold)}
+.panel{display:none;padding:0 0 20px 0}.panel.active{display:block}
+#chart{height:350px;background:var(--card);border-bottom:1px solid var(--border)}
+.trade-buttons{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.trade-buttons button{padding:16px;font-size:16px;font-weight:700;border:none;cursor:pointer}
+.btn-buy{background:var(--green);color:#fff}.btn-sell{background:var(--red);color:#fff}
+.stats-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)}
+.stats-bar .stat{background:var(--card);padding:12px 8px;text-align:center}
+.stats-bar .stat .val{font-size:16px;font-weight:700}.stats-bar .stat .lbl{font-size:10px;color:#848e9c}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--bottom-nav-h);background:#161a1e;border-top:1px solid var(--border);display:flex;z-index:100}
+.bottom-nav .bn-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:#848e9c;cursor:pointer}
+.bottom-nav .bn-item.active{color:var(--gold)}.bottom-nav .bn-item svg{width:20px;height:20px;margin-bottom:2px}
+input,select{width:100%;padding:10px;margin:4px 0;background:#181a20;border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:13px}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:200;justify-content:center;align-items:center}
+.modal.active{display:flex}.modal-box{background:var(--card);padding:20px;border-radius:12px;width:90%;max-width:340px;border:1px solid var(--border)}
+.vip-card{background:linear-gradient(135deg,#1a1a00,#332200);border:1px solid var(--gold);border-radius:12px;padding:16px;margin:10px}
+.vip-card h3{color:var(--gold)}.vip-card ul{list-style:none;font-size:12px;margin:8px 0}.vip-card ul li{margin:4px 0}
+.vip-price{font-size:28px;font-weight:800;color:var(--gold);text-align:center;margin:10px 0}
+.btn-gold{width:100%;padding:14px;background:var(--gold);color:#000;border:none;border-radius:6px;font-weight:700;font-size:15px;cursor:pointer}
+.order-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px}
+.order-buy{color:var(--green)}.order-sell{color:var(--red)}
+.chat-msg{margin:6px 0;font-size:12px}.chat-user{color:var(--blue)}.chat-ai{color:#848e9c}
+</style></head><body>
+<div class="header"><div class="logo">⚡ GM Analytics</div><div id="userInfo" onclick="showAuth()" style="cursor:pointer;font-size:12px">🔐 Вход</div></div>
+<div class="symbol-bar" id="symbolBar">
+<div class="symbol-item active" onclick="changeSymbol('XAUUSD')">XAUUSD</div>
+<div class="symbol-item" onclick="changeSymbol('EURUSD')">EURUSD</div>
+<div class="symbol-item" onclick="changeSymbol('GBPUSD')">GBPUSD</div>
+</div>
+
+<div id="chartPanel" class="panel active"><div id="chart"></div></div>
+<div id="tradePanel" class="panel">
+<div style="text-align:center;padding:20px;font-size:24px;font-weight:700" id="tradePrice">—</div>
+<div class="trade-buttons"><button class="btn-buy" onclick="doTrade('BUY')">🟢 BUY</button><button class="btn-sell" onclick="doTrade('SELL')">🔴 SELL</button></div>
+<div class="stats-bar"><div class="stat"><div class="val" id="pnlVal">$0</div><div class="lbl">P&L</div></div><div class="stat"><div class="val" id="tradesVal">0/5</div><div class="lbl">Сделки</div></div><div class="stat"><div class="val" id="wrVal">—</div><div class="lbl">Винрейт</div></div></div>
+<div style="padding:10px"><h4 style="margin-bottom:6px">📋 Открытые позиции</h4><div id="openPositions"><div class="order-row"><span>Нет открытых позиций</span></div></div></div>
+<div style="padding:10px"><h4 style="margin-bottom:6px">📜 История сделок</h4><div id="tradesList" style="font-size:12px">Загрузка...</div></div>
+</div>
+<div id="aiPanel" class="panel">
+<div style="padding:10px"><h3>🤖 AI Ассистент</h3>
+<div id="chatBox" style="height:300px;overflow-y:auto;background:#181a20;border-radius:8px;padding:10px;margin:8px 0;font-size:12px">Задайте вопрос о рынке...</div>
+<div style="display:flex;gap:6px"><input type="text" id="chatInput" placeholder="Спросите AI..."><button class="btn-gold" style="width:auto;padding:10px 16px" onclick="aiChat()">➤</button></div></div>
+</div>
+<div id="vipPanel" class="panel">
+<div class="vip-card"><h3>💎 VIP Подписка</h3><ul><li>✅ Авто-трейдинг 24/7</li><li>✅ Безлимит сообщений ИИ</li><li>✅ Смена цвета интерфейса</li><li>✅ Больше шанс заработать</li></ul><div class="vip-price">20 USDT</div><button class="btn-gold" onclick="payBybit()">💳 Оплатить 20 USDT</button><p style="text-align:center;font-size:10px;color:#848e9c;margin-top:6px">Оплата через Bybit • 1 нажатие</p></div>
+</div>
+<div id="accountPanel" class="panel">
+<div style="padding:10px"><h3>👤 Аккаунт</h3><input type="text" id="mt5Login" placeholder="Логин MT5"><input type="password" id="mt5Pass" placeholder="Пароль MT5"><input type="text" id="mt5Server" placeholder="Сервер MT5" value="MetaQuotes-Demo"><button class="btn-gold" onclick="connectMT5()">🔗 Подключить MT5</button><button class="btn-sell" style="width:100%;padding:12px;margin-top:8px;border:none;border-radius:6px;font-weight:700;cursor:pointer" onclick="logout()">🚪 Выйти</button><p style="margin-top:10px;font-size:12px">🆘 Поддержка: <a href="https://t.me/maksonchik22833" style="color:var(--blue)">@maksonchik22833</a></p></div>
+</div>
+
+<div class="bottom-nav">
+<div class="bn-item active" onclick="switchPanel('chart')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v8H3v-8zm4-6h2v14H7V7zm4-4h2v18h-2V3zm4 8h2v10h-2V11zm4-5h2v15h-2V6z"/></svg>График</div>
+<div class="bn-item" onclick="switchPanel('trade')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H5v-4H3v6zm18-12h-6v2h4v4h2V6zm-4 12v-2H3v2h14zm2-4v-6H7v6h12z"/></svg>Терминал</div>
+<div class="bn-item" onclick="switchPanel('ai')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>AI Чат</div>
+<div class="bn-item" onclick="switchPanel('vip')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>VIP</div>
+<div class="bn-item" onclick="switchPanel('account')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Аккаунт</div>
+</div>
+
+<div class="modal" id="authModal"><div class="modal-box">
+<h3>🔐 Вход</h3><input type="text" id="authUser" placeholder="Логин"><input type="password" id="authPass" placeholder="Пароль">
+<div style="display:flex;gap:6px;margin-top:8px"><button class="btn-buy" style="flex:1;padding:10px;border:none;border-radius:4px;font-weight:700;cursor:pointer;color:#fff" onclick="login()">Войти</button><button class="btn-sell" style="flex:1;padding:10px;border:none;border-radius:4px;font-weight:700;cursor:pointer;color:#fff" onclick="register()">Регистрация</button></div>
+<button style="width:100%;padding:8px;margin-top:6px;background:#848e9c;border:none;border-radius:4px;color:#fff;cursor:pointer" onclick="closeAuth()">Отмена</button>
+<div id="authMsg" style="font-size:11px;margin-top:6px;text-align:center;color:var(--red)"></div>
+</div></div>
+
+<script>
+let user=null,currentSym='XAUUSD';
+const syms={'XAUUSD':'OANDA:XAUUSD','EURUSD':'OANDA:EURUSD','GBPUSD':'OANDA:GBPUSD'};
+let chartWidget=null;
+
+function switchPanel(n){
+document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+document.querySelectorAll('.bn-item').forEach(b=>b.classList.remove('active'));
+document.getElementById(n+'Panel').classList.add('active');
+let idx={'chart':0,'trade':1,'ai':2,'vip':3,'account':4};
+document.querySelectorAll('.bn-item')[idx[n]].classList.add('active');
+if(n==='trade'){loadHistory();loadPositions()}
+}
+
+function changeSymbol(s){
+currentSym=s;
+document.querySelectorAll('.symbol-item').forEach(i=>i.classList.remove('active'));
+event.target.classList.add('active');
+if(chartWidget)chartWidget.setSymbol(syms[s],'1');
+}
+
+function showAuth(){document.getElementById('authModal').classList.add('active')}
+function closeAuth(){document.getElementById('authModal').classList.remove('active')}
+
+function api(u,o={}){
+let opts={headers:{'Content-Type':'application/json'},...o};
+return fetch(u,opts).then(r=>r.json())
+}
+
+function login(){
+let u=document.getElementById('authUser').value,p=document.getElementById('authPass').value;
+api('/api/login',{method:'POST',body:JSON.stringify({username:u,password:p})}).then(d=>{
+if(d.error){document.getElementById('authMsg').textContent=d.error;return}
+user=d;updateUI();closeAuth()
+})
+}
+
+function register(){
+let u=document.getElementById('authUser').value,p=document.getElementById('authPass').value;
+api('/api/register',{method:'POST',body:JSON.stringify({username:u,password:p})}).then(d=>{
+if(d.error){document.getElementById('authMsg').textContent=d.error;return}
+user=d;updateUI();closeAuth()
+})
+}
+
+function updateUI(){
+let b='<span class="badge badge-free">FREE</span>';
+if(user.tier==='vip')b='<span class="badge badge-vip">VIP</span>';
+if(user.tier==='admin')b='<span class="badge badge-admin">ADMIN</span>';
+document.getElementById('userInfo').innerHTML=user.username+' '+b
+}
+
+function logout(){user=null;document.getElementById('userInfo').textContent='🔐 Вход'}
+
+function doTrade(s){
+if(!user)return alert('Войдите сначала');
+api('/webhook',{method:'POST',body:JSON.stringify({signal:s,price:2625,rsi:52,trend:'UP',atr:15})}).then(d=>{
+alert('Уверенность: '+Math.round(d.confidence*100)+'% | Решение: '+d.decision)
+})
+}
+
+function aiChat(){
+let m=document.getElementById('chatInput').value;if(!m)return;
+document.getElementById('chatBox').innerHTML+='<div class="chat-msg chat-user">Вы: '+m+'</div>';
+api('/api/chat',{method:'POST',body:JSON.stringify({message:m})}).then(d=>{
+document.getElementById('chatBox').innerHTML+='<div class="chat-msg chat-ai">AI: '+(d.reply||'—')+'</div>'
+});
+document.getElementById('chatInput').value='';
+document.getElementById('chatBox').scrollTop=document.getElementById('chatBox').scrollHeight
+}
+
+function payBybit(){
+if(!user)return alert('Войдите сначала');
+window.open('bybit://app/transfer?uid=495132302&amount=20&coin=USDT','_blank');
+api('/api/vip/request',{method:'POST',body:JSON.stringify({username:user.username})}).then(d=>{
+alert(d.message||'Заявка создана. После оплаты VIP активируется автоматически.')
+})
+}
+
+function connectMT5(){
+let l=document.getElementById('mt5Login').value,p=document.getElementById('mt5Pass').value,s=document.getElementById('mt5Server').value;
+api('/api/mt5',{method:'POST',body:JSON.stringify({login:l,password:p,server:s})}).then(d=>{
+alert(d.message||d.error)
+})
+}
+
+function loadHistory(){
+api('/api/trades').then(d=>{
+let html='';
+if(d.trades&&d.trades.length>0){
+d.trades.forEach(t=>{
+let cls=t.signal==='BUY'?'order-buy':'order-sell';
+html+='<div class="order-row"><span class="'+cls+'">'+t.signal+'</span><span>'+t.price+'</span><span>'+t.confidence+'%</span><span>'+t.time+'</span></div>'
+})
+}else{html='<div class="order-row">Нет сделок</div>'}
+document.getElementById('tradesList').innerHTML=html
+})
+}
+
+function loadPositions(){
+document.getElementById('openPositions').innerHTML='<div class="order-row"><span>Нет открытых позиций</span></div>'
+}
+
+setInterval(()=>{
+api('/api/dashboard/stats').then(d=>{
+document.getElementById('pnlVal').textContent=(d.pnl_today>=0?'+':'')+'$'+Math.abs(d.pnl_today);
+document.getElementById('tradesVal').textContent=d.trades_today+'/5';
+document.getElementById('wrVal').textContent=d.winrate+'%'
+})
+},5000);
+
+window.onload=function(){
+let s=document.createElement('script');s.src='https://s3.tradingview.com/tv.js';
+s.onload=function(){
+chartWidget=new TradingView.widget({
+container_id:'chart',width:'100%',height:350,
+symbol:syms[currentSym],interval:'1',theme:'dark',style:'1',locale:'ru',
+toolbar_bg:'#161a1e',enable_publishing:false,allow_symbol_change:false,
+studies:['RSI@tv-basicstudies','MAExp@tv-basicstudies']
+})};
+document.getElementById('chart').appendChild(s)
+}
+</script></body></html>"""
+
+
+# ═══════════════════════════════════════════════════
+# FLASK API
+# ═══════════════════════════════════════════════════
+
+@app.route("/")
+def home():
+    return get_html()
+
+
+@app.route("/api/health")
+def health():
+    return jsonify({"status": "ok", "version": "5.0", "company": "GM Analytics"})
+
+
+@app.route("/api/register", methods=["POST"])
+def api_register():
+    d = request.get_json() or {}
+    u, p = d.get("username"), d.get("password")
+    if not u or not p:
+        return jsonify({"error": "Заполните поля"}), 400
+    users = load_users()
+    if u in users:
+        return jsonify({"error": "Пользователь существует"}), 409
+    tier = "admin" if u in ADMIN_USERS else "free"
+    users[u] = {"password": hashlib.sha256(p.encode()).hexdigest(), "tier": tier}
+    save_users(users)
+    return jsonify({"username": u, "tier": tier})
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    d = request.get_json() or {}
+    u, p = d.get("username"), d.get("password")
+    users = load_users()
+    if u not in users or users[u]["password"] != hashlib.sha256(p.encode()).hexdigest():
+        return jsonify({"error": "Неверный логин или пароль"}), 401
+    return jsonify({"username": u, "tier": users[u].get("tier", "free")})
+
+
+@app.route("/api/vip/request", methods=["POST"])
+def api_vip_request():
+    d = request.get_json() or {}
+    u = d.get("username")
+    pending = load_pending_vip()
+    pending.append({
+        "username": u,
+        "status": "waiting",
+        "time": datetime.now(timezone.utc).isoformat()
+    })
+    save_pending_vip(pending)
+    return jsonify({"message": "Заявка создана. Переведите 20 USDT. VIP активируется автоматически."})
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    d = request.get_json() or {}
+    msg = d.get("message", "")
+    if not msg:
+        return jsonify({"error": "Введите сообщение"}), 400
+    reply = deepseek_ask(msg)
+    return jsonify({"reply": reply})
+
+
+@app.route("/api/mt5", methods=["POST"])
+def api_mt5():
+    d = request.get_json() or {}
+    try:
+        import MetaTrader5 as _mt5
+
+        _mt5.initialize()
+        result = _mt5.login(int(d.get("login", 0)), d.get("password", ""), d.get("server", ""))
+        if result:
+            return jsonify({"message": "MT5 подключён!"})
+        return jsonify({"error": "Неверные данные MT5"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    d = request.get_json() or {}
+    trade = process_signal(
+        d.get("signal"), d.get("price"), d.get("rsi"),
+        d.get("trend"), d.get("atr")
+    )
+    return jsonify({
+        "confidence": trade["confidence"],
+        "decision": trade["decision"],
+        "id": trade["id"]
+    })
+
+
+@app.route("/api/trades")
+def api_trades():
+    trades = load_trades()[-30:]
+    return jsonify({
+        "trades": [
+            {
+                "signal": t.get("input", {}).get("signal", ""),
+                "price": t.get("input", {}).get("price", ""),
+                "confidence": round(t.get("confidence", 0) * 100),
+                "time": t.get("received_at", "")[:16]
+            }
+            for t in reversed(trades)
+        ]
+    })
+
+
+@app.route("/api/dashboard/stats")
+def api_dashboard_stats():
+    stats = load_daily_stats()
+    trades = load_trades()
+    labeled = [t for t in trades if t.get("outcome") in ("win", "loss")]
+    wins = sum(1 for t in labeled if t["outcome"] == "win")
+    wr = round(wins / len(labeled) * 100) if labeled else 0
+    return jsonify({
+        "pnl_today": round(stats.get("daily_pnl", 0), 2),
+        "trades_today": stats.get("trades_today", 0),
+        "winrate": wr
+    })
+
+
+@app.route("/telegram/webhook", methods=["POST"])
+def telegram_webhook():
+    update = request.get_json(silent=True) or {}
+    try:
+        if update.get("message"):
+            handle_telegram(update["message"])
+        elif update.get("callback_query"):
+            handle_callback(update["callback_query"])
+    except:
+        pass
+    return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════
+# ЗАПУСК
+# ═══════════════════════════════════════════════════
+
+def payment_checker():
+    while True:
+        check_trc20_payments()
+        time.sleep(30)
+
 
 if __name__ == "__main__":
-    create_app().run(host="0.0.0.0", port=5050, debug=False)
+    print("╔══════════════════════════════════════╗")
+    print("║   GM Analytics — Trading Terminal  ║")
+    print("║   🌐 http://127.0.0.1:5050        ║")
+    print("║   XAUUSD | EURUSD | GBPUSD        ║")
+    print("║   💎 VIP: 20 USDT (Bybit)         ║")
+    print("╚══════════════════════════════════════╝")
+
+    threading.Thread(target=payment_checker, daemon=True).start()
+    threading.Thread(target=auto_trading_loop, daemon=True).start()
+
+    app.run(host="0.0.0.0", port=PORT, debug=False)
